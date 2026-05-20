@@ -34,16 +34,3 @@ export function formatDate(date: Date | string) {
 export function generateCode(prefix: string, count: number) {
   return `${prefix}-${String(count + 1).padStart(5, "0")}`;
 }
-
-export function formatCurrency(value: number, compact = true): string {
-  if (compact) {
-    if (Math.abs(value) >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
-  }
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
-}
-
-export function formatPercent(value: number, decimals = 1): string {
-  return `${value > 0 ? "+" : ""}${value.toFixed(decimals)}%`;
-}

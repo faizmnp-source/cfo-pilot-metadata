@@ -114,9 +114,4 @@ export async function POST(req: NextRequest) {
     newValue: record as unknown as Record<string, unknown>,
     userId: auth.sub,
     userName: auth.name,
-    userEmail: auth.email,
-    userRole: auth.role,
-  });
-
-  return apiResponse(record, 201);
-}
+    userEmail

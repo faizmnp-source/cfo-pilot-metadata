@@ -108,13 +108,14 @@ export async function POST(
     if (!parentMember) return apiError("Parent member not found in this dimension", 400);
   }
 
-  const record = await prisma.dimensionMember.create({
-    data: {
-      ...parsed.data,
-      tenantId: auth.tid,
-      dimensionId: params.id,
-    },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createData: any = {
+    ...parsed.data,
+    tenantId: auth.tid,
+    dimensionId: params.id,
+  };
+
+  const record = await prisma.dimensionMember.create({ data: createData });
 
   await writeAuditLog({
     tenantId: auth.tid,
@@ -125,9 +126,4 @@ export async function POST(
     newValue: record as unknown as Record<string, unknown>,
     userId: auth.sub,
     userName: auth.name,
-    userEmail: auth.email,
-    userRole: auth.role,
-  });
-
-  return apiResponse(record, 201);
-}
+    use

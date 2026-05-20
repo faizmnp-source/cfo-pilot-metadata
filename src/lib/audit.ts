@@ -42,8 +42,4 @@ export async function writeAuditLog(params: AuditParams) {
         userRole: params.userRole,
         ipAddress: params.ipAddress,
       },
-    });
-  } catch (err) {
-    console.error("[AuditLog] Failed to write audit:", err);
-  }
-}
+   

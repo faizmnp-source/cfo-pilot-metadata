@@ -81,20 +81,4 @@ export async function POST(req: NextRequest) {
     sortOrder: parsed.data.sortOrder ?? 0,
   };
 
-  const timePoint = await prisma.timePoint.create({ data: createData });
-
-  await writeAuditLog({
-    tenantId: auth.tid,
-    tableName: "time_points",
-    recordId: timePoint.id,
-    dimensionType: "TIME",
-    action: "CREATE",
-    newValue: timePoint as Record<string, unknown>,
-    userId: auth.sub,
-    userName: auth.name,
-    userEmail: auth.email,
-    userRole: auth.role,
-  });
-
-  return apiResponse(timePoint, 201);
-}
+  const timePoint = await prisma.timePoint.create({ data: crea

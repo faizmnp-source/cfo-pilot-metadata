@@ -173,10 +173,4 @@ export async function DELETE(
     action: "DELETE",
     oldValue: existing as unknown as Record<string, unknown>,
     userId: auth.sub,
-    userName: auth.name,
-    userEmail: auth.email,
-    userRole: auth.role,
-  });
-
-  return apiResponse({ deleted: true });
-}
+    userName: auth.
