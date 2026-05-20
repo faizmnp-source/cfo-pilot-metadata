@@ -72,14 +72,16 @@ export async function POST(req: NextRequest) {
     if (!parent) return apiError("Parent time period not found", 404);
   }
 
-  const timePoint = await prisma.timePoint.create({
-    data: {
-      ...parsed.data,
-      tenantId: auth.tid,
-      startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : new Date(),
-      endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : new Date(),
-    },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createData: any = {
+    ...parsed.data,
+    tenantId: auth.tid,
+    startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : new Date(),
+    endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : new Date(),
+    sortOrder: parsed.data.sortOrder ?? 0,
+  };
+
+  const timePoint = await prisma.timePoint.create({ data: createData });
 
   await writeAuditLog({
     tenantId: auth.tid,
