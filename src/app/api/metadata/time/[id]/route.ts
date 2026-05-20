@@ -50,7 +50,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const updated = await prisma.timePoint.update({
     where: { id: params.id },
-    data: { ...parsed.data, updatedBy: auth.sub },
+    data: {
+      ...parsed.data,
+      ...(parsed.data.startDate !== undefined && { startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined }),
+      ...(parsed.data.endDate !== undefined && { endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined }),
+    },
   });
 
   await writeAuditLog({

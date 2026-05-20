@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const updated = await prisma.doctorCategory.update({
     where: { id: params.id },
-    data: { ...parsed.data, updatedBy: auth.sub },
+    data: { ...parsed.data },
   });
 
   await writeAuditLog({

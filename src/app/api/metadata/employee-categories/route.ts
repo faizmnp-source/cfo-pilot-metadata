@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
   if (exists) return apiError("Employee category code already exists", 409);
 
   const employeeCategory = await prisma.employeeCategory.create({
+    data: {
+      ...parsed.data,
+      tenantId: auth.tid,
+    },
   });
 
   await writeAuditLog({

@@ -232,7 +232,7 @@ export default function ValidationPage() {
     URL.revokeObjectURL(url);
   };
 
-  const uniqueDims = [...new Set(issues.map(i => i.dimension))];
+  const uniqueDims = Array.from(new Set(issues.map(i => i.dimension)));
 
   return (
     <>
