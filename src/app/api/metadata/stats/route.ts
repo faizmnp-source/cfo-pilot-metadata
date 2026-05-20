@@ -8,15 +8,50 @@ export async function GET(req: NextRequest) {
   if (!auth) return apiError("Unauthorized", 401);
   const tid = auth.tid;
   const since24h = new Date(Date.now() - 86400000);
-  const [accounts, entities, departments, costCenters, currencies, scenarios, recentChanges, importJobs] = await Promise.all([
+
+  const [
+    accounts,
+    entities,
+    departments,
+    costCenters,
+    currencies,
+    scenarios,
+    products,
+    empCategories,
+    docCategories,
+    timePoints,
+    recentChanges,
+    importJobs,
+    validationErrors,
+  ] = await Promise.all([
     prisma.account.count({ where: { tenantId: tid, isActive: true } }),
     prisma.entity.count({ where: { tenantId: tid, isActive: true } }),
     prisma.department.count({ where: { tenantId: tid, isActive: true } }),
     prisma.costCenter.count({ where: { tenantId: tid, isActive: true } }),
     prisma.currency.count({ where: { tenantId: tid, isActive: true } }),
     prisma.scenario.count({ where: { tenantId: tid, isActive: true } }),
+    prisma.productService.count({ where: { tenantId: tid, isActive: true } }),
+    prisma.employeeCategory.count({ where: { tenantId: tid, isActive: true } }),
+    prisma.doctorCategory.count({ where: { tenantId: tid, isActive: true } }),
+    prisma.timePoint.count({ where: { tenantId: tid, isActive: true } }),
     prisma.auditLog.count({ where: { tenantId: tid, createdAt: { gte: since24h } } }),
     prisma.importJob.count({ where: { tenantId: tid } }),
+    prisma.importJob.count({ where: { tenantId: tid, status: "VALIDATION_FAILED" } }),
   ]);
-  return apiResponse({ accounts, entities, departments, costCenters, currencies, scenarios, recentChanges, importJobs, validationErrors: 0 });
+
+  return apiResponse({
+    accounts,
+    entities,
+    departments,
+    costCenters,
+    currencies,
+    scenarios,
+    products,
+    empCategories,
+    docCategories,
+    timePoints,
+    recentChanges,
+    importJobs,
+    validationErrors,
+  });
 }

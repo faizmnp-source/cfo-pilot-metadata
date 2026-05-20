@@ -5,7 +5,7 @@ import {
   LayoutDashboard, CalendarCheck, PieChart, TrendingUp, Users, Kanban,
   FileText, Table2, Sparkles, Bell, Settings, ChevronLeft, ChevronRight,
   Navigation, BookOpen, Building2, GitBranch, Layers, Upload, ShieldCheck,
-  History, LogOut,
+  History, LogOut, DollarSign, Globe, Clock, Package, Stethoscope, UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -22,14 +22,20 @@ const CFO_NAV = [
 ];
 
 const META_NAV = [
-  { href: "/metadata",              label: "Overview",          icon: Layers },
-  { href: "/metadata/accounts",     label: "Accounts",          icon: BookOpen },
-  { href: "/metadata/entities",     label: "Entities",          icon: Building2 },
-  { href: "/metadata/departments",  label: "Departments",       icon: GitBranch },
-  { href: "/metadata/cost-centers", label: "Cost Centers",      icon: GitBranch },
-  { href: "/metadata/import",       label: "Import",            icon: Upload },
-  { href: "/metadata/validation",   label: "Validation",        icon: ShieldCheck },
-  { href: "/metadata/audit-logs",   label: "Audit Logs",        icon: History },
+  { href: "/metadata",                      label: "Overview",            icon: Layers },
+  { href: "/metadata/accounts",             label: "Accounts",            icon: BookOpen },
+  { href: "/metadata/entities",             label: "Entities",            icon: Building2 },
+  { href: "/metadata/departments",          label: "Departments",         icon: GitBranch },
+  { href: "/metadata/cost-centers",         label: "Cost Centers",        icon: DollarSign },
+  { href: "/metadata/scenarios",            label: "Scenarios",           icon: PieChart },
+  { href: "/metadata/currencies",           label: "Currencies",          icon: Globe },
+  { href: "/metadata/time",                 label: "Time Periods",        icon: Clock },
+  { href: "/metadata/product-services",     label: "Products & Services", icon: Package },
+  { href: "/metadata/employee-categories",  label: "Employee Categories", icon: UserCog },
+  { href: "/metadata/doctor-categories",    label: "Doctor Categories",   icon: Stethoscope },
+  { href: "/metadata/import",               label: "Import Wizard",       icon: Upload },
+  { href: "/metadata/validation",           label: "Validation",          icon: ShieldCheck },
+  { href: "/metadata/audit-logs",           label: "Audit Logs",          icon: History },
 ];
 
 interface UnifiedSidebarProps {
