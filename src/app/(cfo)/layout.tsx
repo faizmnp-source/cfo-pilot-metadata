@@ -2,9 +2,9 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { UnifiedSidebar } from "@/components/layout/UnifiedSidebar";
 
-export default async function MetadataLayout({ children }: { children: React.ReactNode }) {
+export default async function CfoLayout({ children }: { children: React.ReactNode }) {
   let userName = "User";
-  let userRole = "VIEWER";
+  let userRole = "CFO";
 
   try {
     const cookieStore = cookies();
@@ -13,7 +13,7 @@ export default async function MetadataLayout({ children }: { children: React.Rea
       const payload = await verifyToken(token);
       if (payload) {
         userName = payload.name ?? payload.email ?? "User";
-        userRole = payload.role ?? "VIEWER";
+        userRole = payload.role ?? "CFO";
       }
     }
   } catch { /* use defaults */ }
@@ -21,7 +21,9 @@ export default async function MetadataLayout({ children }: { children: React.Rea
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-page)]">
       <UnifiedSidebar userName={userName} userRole={userRole} />
-      <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+        {children}
+      </div>
     </div>
   );
 }

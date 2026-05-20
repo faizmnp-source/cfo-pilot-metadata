@@ -36,12 +36,13 @@
   .tabular { font-variant-numeric: tabular-nums; }
 }
 
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-.shimmer {
-  background: linear-gradient(90deg, #f3f4f6 25%, #e9eaec 50%, #f3f4f6 75%);
-  background-size: 200%;
-  animation: shimmer 1.5s ease-in-out infinite;
-}
+/* ── CFO Pilot design tokens ── */
+:root {
+  --bg-page: #FAFAFA;
+  --bg-surface: #FFFFFF;
+  --bg-surface-sunken: #F5F5F5;
+  --border-default: #EBEBEB;
+  --border-strong: #D6D6D6;
+  --text-primary: #1A1A1A;
+  --text-secondary: #5C5C5C;
+  --text-tertiary: #8

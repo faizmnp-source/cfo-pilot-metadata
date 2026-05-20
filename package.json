@@ -55,20 +55,4 @@
     "@testing-library/react": "^16.0.0",
     "@testing-library/jest-dom": "^6.4.6",
     "ts-jest": "^29.2.2",
-    "tsx": "^4.16.2",
-    "@types/jest": "^29.5.12"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/__tests__/**/*.test.ts"
-    ],
-    "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/src/$1"
-    },
-    "transform": {
-      "^.+\\.tsx?$": ["ts-jest", { "tsconfig": { "module": "commonjs" } }]
-    }
-  }
-}
+    "tsx
