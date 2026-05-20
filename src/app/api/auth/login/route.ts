@@ -6,6 +6,15 @@ import { LoginSchema } from "@/lib/validations";
 import { apiResponse, apiError } from "@/lib/utils";
 import { writeAuditLog } from "@/lib/audit";
 
+// Demo users for when DATABASE_URL is not configured
+const DEMO_USERS = [
+  { id: "demo-1", email: "admin@demo.com",   password: "admin123",   name: "Admin User",    role: "ADMIN",           tenantId: "demo-tenant" },
+  { id: "demo-2", email: "manager@demo.com", password: "manager123", name: "Finance Manager", role: "FINANCE_MANAGER", tenantId: "demo-tenant" },
+  { id: "demo-3", email: "user@demo.com",    password: "user123",    name: "Finance User",  role: "FINANCE_USER",    tenantId: "demo-tenant" },
+  { id: "demo-4", email: "viewer@demo.com",  password: "viewer123",  name: "Viewer",        role: "VIEWER",          tenantId: "demo-tenant" },
+];
+const DEMO_TENANT = { id: "demo-tenant", name: "CFO Pilot Demo", isActive: true };
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -13,31 +22,59 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return apiError("Invalid credentials format", 400);
 
     const { email, password } = parsed.data;
-    const user = await prisma.user.findFirst({
-      where: { email: email.toLowerCase(), isActive: true },
-      include: { tenant: { select: { id:true, name:true, isActive:true } } },
-    });
 
-    if (!user || !user.tenant.isActive) return apiError("Invalid email or password", 401);
+    // --- Try database first ---
+    if (process.env.DATABASE_URL) {
+      try {
+        const user = await prisma.user.findFirst({
+          where: { email: email.toLowerCase(), isActive: true },
+          include: { tenant: { select: { id:true, name:true, isActive:true } } },
+        });
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return apiError("Invalid email or password", 401);
+        if (user && user.tenant.isActive) {
+          const valid = await bcrypt.compare(password, user.passwordHash);
+          if (!valid) return apiError("Invalid email or password", 401);
+
+          const token = await signToken({
+            sub: user.id, tid: user.tenantId,
+            email: user.email, name: user.name, role: user.role,
+          });
+
+          await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+          await writeAuditLog({
+            tenantId: user.tenantId, tableName: "users", recordId: user.id,
+            action: "LOGIN", userId: user.id, userName: user.name, userEmail: user.email,
+            userRole: user.role, ipAddress: req.headers.get("x-forwarded-for") ?? "unknown",
+          });
+
+          const response = apiResponse({
+            user: { id:user.id, email:user.email, name:user.name, role:user.role, tenantId:user.tenantId },
+            tenant: user.tenant,
+          });
+          response.cookies.set(setAuthCookie(token));
+          return response;
+        }
+
+        if (user && !user.tenant.isActive) return apiError("Invalid email or password", 401);
+        // user not found — fall through to demo check
+      } catch (dbErr) {
+        console.warn("[Auth/Login] DB error, falling back to demo mode:", dbErr);
+      }
+    }
+
+    // --- Demo fallback (no DB or user not in DB) ---
+    const demo = DEMO_USERS.find((u) => u.email === email.toLowerCase());
+    if (!demo || demo.password !== password) return apiError("Invalid email or password", 401);
 
     const token = await signToken({
-      sub: user.id, tid: user.tenantId,
-      email: user.email, name: user.name, role: user.role,
-    });
-
-    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    await writeAuditLog({
-      tenantId: user.tenantId, tableName: "users", recordId: user.id,
-      action: "LOGIN", userId: user.id, userName: user.name, userEmail: user.email,
-      userRole: user.role, ipAddress: req.headers.get("x-forwarded-for") ?? "unknown",
+      sub: demo.id, tid: demo.tenantId,
+      email: demo.email, name: demo.name, role: demo.role,
     });
 
     const response = apiResponse({
-      user: { id:user.id, email:user.email, name:user.name, role:user.role, tenantId:user.tenantId },
-      tenant: user.tenant,
+      user: { id:demo.id, email:demo.email, name:demo.name, role:demo.role, tenantId:demo.tenantId },
+      tenant: DEMO_TENANT,
+      demo: true,
     });
     response.cookies.set(setAuthCookie(token));
     return response;

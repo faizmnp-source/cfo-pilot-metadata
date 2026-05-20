@@ -109,12 +109,26 @@ export default function LoginPage() {
           </form>
 
           {/* Demo credentials */}
-          <div className="mt-6 rounded-md bg-muted/40 p-3">
-            <p className="mb-1.5 text-xs font-medium text-foreground">Demo credentials</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>Admin: admin@cfopilot.com / admin123</p>
-              <p>Manager: manager@cfopilot.com / manager123</p>
-              <p>Viewer: viewer@cfopilot.com / viewer123</p>
+          <div className="mt-6 rounded-md bg-blue-50 border border-blue-100 p-3">
+            <p className="mb-2 text-xs font-semibold text-blue-800">Demo credentials (no DB required)</p>
+            <div className="space-y-1.5 text-xs text-blue-700">
+              {[
+                { label: "Admin", email: "admin@demo.com", pw: "admin123" },
+                { label: "Manager", email: "manager@demo.com", pw: "manager123" },
+                { label: "User", email: "user@demo.com", pw: "user123" },
+                { label: "Viewer", email: "viewer@demo.com", pw: "viewer123" },
+              ].map((u) => (
+                <button
+                  key={u.email}
+                  type="button"
+                  onClick={() => { setEmail(u.email); setPassword(u.pw); }}
+                  className="flex w-full items-center justify-between rounded px-2 py-1 hover:bg-blue-100 transition-colors text-left"
+                >
+                  <span className="font-medium">{u.label}</span>
+                  <span className="font-mono opacity-80">{u.email}</span>
+                </button>
+              ))}
+              <p className="pt-1 opacity-60 text-[10px]">Click a row to auto-fill credentials</p>
             </div>
           </div>
         </div>
