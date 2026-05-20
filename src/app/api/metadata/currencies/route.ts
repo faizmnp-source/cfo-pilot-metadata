@@ -64,8 +64,6 @@ export async function POST(req: NextRequest) {
       ...parsed.data,
       exchangeRate: parsed.data.exchangeRate,
       tenantId: auth.tid,
-      createdBy: auth.sub,
-      updatedBy: auth.sub,
     },
   });
 

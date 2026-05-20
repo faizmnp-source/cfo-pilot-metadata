@@ -73,7 +73,6 @@ export async function POST(req: NextRequest) {
   }
 
   const timePoint = await prisma.timePoint.create({
-    data: { ...parsed.data, tenantId: auth.tid, createdBy: auth.sub, updatedBy: auth.sub },
   });
 
   await writeAuditLog({

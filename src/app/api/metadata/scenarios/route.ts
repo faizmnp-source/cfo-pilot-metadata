@@ -61,7 +61,6 @@ export async function POST(req: NextRequest) {
   if (exists) return apiError("Scenario code already exists", 409);
 
   const scenario = await prisma.scenario.create({
-    data: { ...parsed.data, tenantId: auth.tid, createdBy: auth.sub, updatedBy: auth.sub },
   });
 
   await writeAuditLog({

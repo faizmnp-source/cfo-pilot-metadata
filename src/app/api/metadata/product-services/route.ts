@@ -65,8 +65,6 @@ export async function POST(req: NextRequest) {
     data: {
       ...parsed.data,
       tenantId: auth.tid,
-      createdBy: auth.sub,
-      updatedBy: auth.sub,
     },
   });
 
