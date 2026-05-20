@@ -32,7 +32,7 @@ async function wouldCreateCycle(
     if (visited.has(currentId)) return true; // safety: existing cycle guard
     visited.add(currentId);
 
-    const node = await prisma.dimensionMember.findFirst({
+    const node: { parentId: string | null } | null = await prisma.dimensionMember.findFirst({
       where: { id: currentId, tenantId, dimensionId },
       select: { parentId: true },
     });

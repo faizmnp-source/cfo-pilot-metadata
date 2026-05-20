@@ -42,7 +42,7 @@ async function wouldCreateCycle(
     if (visited.has(currentId)) return true;
     visited.add(currentId);
 
-    const node = await prisma.project.findFirst({
+    const node: { parentId: string | null } | null = await prisma.project.findFirst({
       where: { id: currentId, tenantId },
       select: { parentId: true },
     });
