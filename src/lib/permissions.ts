@@ -1,73 +1,86 @@
 export type Role = "ADMIN" | "FINANCE_MANAGER" | "FINANCE_USER" | "VIEWER";
 export type Action = "create" | "read" | "update" | "delete" | "import" | "export" | "bulkUpdate";
-export type Resource = "account" | "entity" | "department" | "costCenter" | "currency" | "scenario" | "time" | "product" | "employee" | "doctor" | "importJob" | "auditLog" | "user";
+export type Resource =
+  | "account"
+  | "entity"
+  | "department"
+  | "costCenter"
+  | "currency"
+  | "scenario"
+  | "time"
+  | "icp"
+  | "project"
+  | "dimension"
+  | "importJob"
+  | "auditLog"
+  | "user";
 
 type PermMatrix = Record<Role, Record<Action, boolean>>;
 
 const PERMISSIONS: Record<Resource, PermMatrix> = {
   account: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   entity: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   department: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   costCenter: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   currency: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   scenario: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:true,  read:true,  update:true,  delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   time: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:true,  read:true,  update:true,  delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
-  product: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+  icp: {
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
-  employee: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+  project: {
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
-  doctor: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
+  dimension: {
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:true,  bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
   importJob: {
-    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true },
-    FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
+    ADMIN:           { create:true,  read:true,  update:true,  delete:true,  import:true,  export:true,  bulkUpdate:true  },
+    FINANCE_MANAGER: { create:true,  read:true,  update:false, delete:false, import:true,  export:false, bulkUpdate:false },
     FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
@@ -87,10 +100,4 @@ const PERMISSIONS: Record<Resource, PermMatrix> = {
 
 export function can(role: Role, resource: Resource, action: Action): boolean {
   return PERMISSIONS[resource]?.[role]?.[action] ?? false;
-}
-
-export function requirePermission(role: Role, resource: Resource, action: Action): void {
-  if (!can(role, resource, action)) {
-    throw new Error(`FORBIDDEN: Role '${role}' cannot '${action}' on '${resource}'`);
-  }
 }
