@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, Prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
 import { apiResponse, apiError } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       status: missingCols.length > 0 ? "VALIDATION_FAILED" : "PENDING",
       totalRecords: rows.length,
       previewData: JSON.parse(JSON.stringify(rows.slice(0, PREVIEW_ROWS))),
-      validationReport: missingCols.length > 0 ? { errors: [{ type: "MISSING_COLUMNS", columns: missingCols }] } : null,
+      validationReport: missingCols.length > 0 ? { errors: [{ type: "MISSING_COLUMNS", columns: missingCols }] } : Prisma.JsonNull,
       createdBy: auth.sub, createdByName: auth.name,
     },
   });
