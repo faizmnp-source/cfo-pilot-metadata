@@ -114,4 +114,6 @@ export default function BudgetingPage() {
           </div>
         </div>
       </main>
-    
+    </>
+  );
+}

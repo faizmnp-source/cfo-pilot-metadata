@@ -77,4 +77,8 @@ export async function POST(req: NextRequest) {
     userId: auth.sub,
     userName: auth.name,
     userEmail: auth.email,
-    
+    userRole: auth.role,
+  });
+
+  return apiResponse(scenario, 201);
+}

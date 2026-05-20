@@ -89,4 +89,18 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   await prisma.timePoint.delete({ where: { id: params.id } });
 
-  await writeAudi
+  await writeAuditLog({
+    tenantId: auth.tid,
+    tableName: "time_points",
+    recordId: params.id,
+    dimensionType: "TIME",
+    action: "DELETE",
+    oldValue: existing as Record<string, unknown>,
+    userId: auth.sub,
+    userName: auth.name,
+    userEmail: auth.email,
+    userRole: auth.role,
+  });
+
+  return apiResponse({ deleted: true });
+}

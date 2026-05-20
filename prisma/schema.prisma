@@ -372,22 +372,32 @@ model AuditLog {
 // ─── Import Job ───────────────────────────────────────────────────
 
 model ImportJob {
-  id            String       @id @default(uuid())
-  tenantId      String
-  fileName      String
-  dimensionType DimensionType
-  status        ImportStatus @default(PENDING)
-  totalRows     Int          @default(0)
-  processedRows Int          @default(0)
-  successRows   Int          @default(0)
-  errorRows     Int          @default(0)
-  errors        Json         @default("[]")
-  warnings      Json         @default("[]")
-  uploadedBy    String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id               String        @id @default(uuid())
+  tenantId         String
+  fileName         String
+  originalFileName String?
+  fileSize         Int?
+  dimensionType    DimensionType
+  status           ImportStatus  @default(PENDING)
+  totalRows        Int           @default(0)
+  totalRecords     Int           @default(0)
+  processedRows    Int           @default(0)
+  successRows      Int           @default(0)
+  errorRows        Int           @default(0)
+  validRecords     Int           @default(0)
+  invalidRecords   Int           @default(0)
+  importedRecords  Int           @default(0)
+  previewData      Json?
+  validationReport Json?
+  errors           Json          @default("[]")
+  warnings         Json          @default("[]")
+  uploadedBy       String?
+  createdBy        String?
+  createdByName    String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

@@ -33,4 +33,8 @@ export async function GET(req: NextRequest) {
     id: item.id as string,
     parentId: (item.parentId ?? null) as string | null,
     code: (item.accountCode ?? item.entityCode ?? item.departmentCode ?? item.costCenterCode ?? "") as string,
-    name: (item.accountName ?? item.entityName ?? item.departmentName ?? item.costCenterName ??
+    name: (item.accountName ?? item.entityName ?? item.departmentName ?? item.costCenterName ?? "") as string,
+  }));
+
+  return apiResponse(buildTree(normalized));
+}

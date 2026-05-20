@@ -160,4 +160,66 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
                       ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
                   )}>
-                  <Layers className={cn("w-4 h-4 shrink-0", activ
+                  <Layers className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+                  {!collapsed && <span className="truncate">{name}</span>}
+                </Link>
+              );
+            })}
+          </>
+        )}
+
+        {/* Bottom meta nav */}
+        <div className={cn("my-2 border-t border-[var(--border-default)]", collapsed && "mx-2")} />
+        {META_NAV_BOTTOM.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className={cn("border-t border-[var(--border-default)] py-2 px-2 shrink-0")}>
+        {[
+          { icon: Sparkles, label: "AI Copilot",     color: "text-[var(--color-ai-500)]" },
+          { icon: Bell,     label: "Notifications",  color: "" },
+          { icon: Settings, label: "Settings",       color: "" },
+        ].map(({ icon: Icon, label, color }) => (
+          <button key={label} title={collapsed ? label : undefined}
+            className={cn("flex items-center gap-3 w-full px-3 h-9 rounded-md text-xs font-medium transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]", collapsed && "justify-center px-0")}>
+            <Icon className={cn("w-4 h-4 shrink-0", color || "text-[var(--text-tertiary)]")} strokeWidth={1.5} />
+            {!collapsed && label}
+          </button>
+        ))}
+        <Link href="/api/auth/logout"
+          title={collapsed ? "Sign out" : undefined}
+          className={cn("flex items-center gap-3 w-full px-3 h-9 rounded-md text-xs font-medium transition-colors text-[var(--text-secondary)] hover:text-red-600 hover:bg-red-50", collapsed && "justify-center px-0")}>
+          <LogOut className="w-4 h-4 shrink-0 text-[var(--text-tertiary)]" strokeWidth={1.5} />
+          {!collapsed && "Sign out"}
+        </Link>
+
+        {!collapsed && (
+          <div className="flex items-center gap-2.5 px-3 py-2 mt-1 rounded-md hover:bg-[var(--bg-surface-sunken)] cursor-pointer">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-violet-500 flex items-center justify-center shrink-0">
+              <span className="text-white font-semibold text-xs">{userName.slice(0, 2).toUpperCase()}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-[var(--text-primary)] truncate">{userName}</p>
+              <p className="text-[10px] text-[var(--text-tertiary)] truncate">{userRole}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}

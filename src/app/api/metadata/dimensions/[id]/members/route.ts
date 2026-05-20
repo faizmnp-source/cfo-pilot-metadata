@@ -126,4 +126,9 @@ export async function POST(
     newValue: record as unknown as Record<string, unknown>,
     userId: auth.sub,
     userName: auth.name,
-    use
+    userEmail: auth.email,
+    userRole: auth.role,
+  });
+
+  return apiResponse(record, 201);
+}

@@ -68,4 +68,60 @@ class ValidationIssue(BaseModel):
 class RowResult(BaseModel):
     """Validation result for a single row."""
     rowNumber: int
-    status: str  # "valid" |
+    status: str  # "valid" | "warning" | "error" | "duplicate"
+    issues: List[ValidationIssue] = Field(default_factory=list)
+    data: Dict[str, Any] = Field(default_factory=dict)
+    # Enhanced summary fields
+    errorCount: int = 0
+    warningCount: int = 0
+    issueIds: List[str] = Field(default_factory=list)
+
+
+class ValidationResponse(BaseModel):
+    """Full validation response."""
+    dimensionType: str
+    totalRows: int
+    validRows: int
+    warningRows: int
+    errorRows: int
+    duplicateRows: int
+    issues: List[ValidationIssue]
+    rowResults: List[RowResult]
+    summary: str
+    processingTimeMs: float
+
+
+# ─── Fix endpoint models ──────────────────────────────────────────────────────
+
+class FixRequest(BaseModel):
+    """Request body for the /fix endpoint."""
+    issueId: Optional[str] = Field(
+        default=None,
+        description="Identifier of the issue being fixed (informational)",
+    )
+    fixAction: str = Field(
+        description=(
+            "Action to apply: "
+            "remove_parent | rename_code | rename_name | "
+            "set_default_type | swap_dates | manual"
+        ),
+    )
+    rowData: Dict[str, Any] = Field(
+        description="The current row data dict to be fixed",
+    )
+    dimensionType: Optional[str] = Field(
+        default=None,
+        description="Dimension type context, used by set_default_type",
+    )
+    field: Optional[str] = Field(
+        default=None,
+        description="The field name that triggered this fix (for targeted actions)",
+    )
+
+
+class FixResponse(BaseModel):
+    """Response body for the /fix endpoint."""
+    fixAction: str
+    applied: bool
+    correctedData: Dict[str, Any]
+    description: str

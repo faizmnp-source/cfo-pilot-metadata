@@ -145,4 +145,198 @@ function IssueCard({ issue, onFix, onDismiss }: {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5 mb-1">
             <span className={cn("text-[10px] font-bold uppercase rounded-full px-2 py-0.5", cfg.badge)}>{cfg.label}</span>
-            <span class
+            <span className="text-[10px] bg-white/80 border border-border rounded-full px-2 py-0.5 text-muted-foreground">{issue.category}</span>
+            <span className="text-[10px] bg-white/80 border border-border rounded-full px-2 py-0.5 text-muted-foreground">{DIM_LABELS[issue.dimension] ?? issue.dimension}</span>
+            {issue.code && <code className="text-[10px] font-mono text-foreground bg-white/80 border border-border rounded-full px-2 py-0.5">{issue.code}</code>}
+            {issue.field && <span className="text-[10px] text-muted-foreground">→ <code className="font-mono">{issue.field}</code></span>}
+          </div>
+          <p className="text-xs text-foreground font-medium leading-snug">{issue.message}</p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {issue.fixable && issue.fixAction !== "manual" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onFix(issue.id); }}
+              className="flex items-center gap-1 h-6 px-2.5 rounded-full text-[10px] font-semibold bg-white border border-border text-foreground hover:bg-primary hover:text-white hover:border-primary transition-all"
+            >
+              <Wrench className="w-3 h-3" /> Fix
+            </button>
+          )}
+          <button onClick={(e) => { e.stopPropagation(); onDismiss(issue.id); }}
+            className="h-6 w-6 flex items-center justify-center rounded-full text-muted-foreground hover:bg-white hover:text-foreground transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+          {open ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+        </div>
+      </div>
+
+      {open && (
+        <div className="mx-4 mb-3 mt-0 border-t border-white/60 pt-3">
+          <div className="flex items-start gap-2.5 rounded-lg bg-white border border-violet-200 p-3">
+            <Sparkles className="w-3.5 h-3.5 text-violet-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600 mb-1">AI Fix Suggestion</p>
+              <p className="text-xs text-foreground leading-relaxed">{issue.fixSuggestion ?? "Review this record manually."}</p>
+              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-violet-100">
+                <span className="text-[10px] text-muted-foreground">Row {issue.rowIndex + 1}</span>
+                <span className="text-[10px] font-mono bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{issue.fixAction ?? "manual"}</span>
+                {!issue.fixable && <span className="text-[10px] text-amber-600 font-medium">⚠ Manual review required</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
+export default function ValidationPage() {
+  const [issues, setIssues] = useState<ValidationIssue[]>(INITIAL_ISSUES);
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [dimensionFilter, setDimensionFilter] = useState("all");
+  const [fixingAll, setFixingAll] = useState(false);
+
+  const errors   = issues.filter(i => i.severity === "error"   && !i.fixed).length;
+  const warnings = issues.filter(i => i.severity === "warning" && !i.fixed).length;
+  const infos    = issues.filter(i => i.severity === "info"    && !i.fixed).length;
+  const fixedCnt = issues.filter(i => i.fixed).length;
+  const fixable  = issues.filter(i => !i.fixed && i.fixable && i.fixAction !== "manual").length;
+
+  const visible = issues.filter(i => {
+    if (severityFilter !== "all" && i.severity !== severityFilter) return false;
+    if (categoryFilter !== "All" && i.category !== categoryFilter) return false;
+    if (dimensionFilter !== "all" && i.dimension !== dimensionFilter) return false;
+    return true;
+  });
+
+  const handleFix     = (id: string) => setIssues(p => p.map(i => i.id === id ? { ...i, fixed: true } : i));
+  const handleDismiss = (id: string) => setIssues(p => p.filter(i => i.id !== id));
+  const handleFixAll  = async () => {
+    setFixingAll(true);
+    await new Promise(r => setTimeout(r, 700));
+    setIssues(p => p.map(i => (!i.fixed && i.fixable && i.fixAction !== "manual") ? { ...i, fixed: true } : i));
+    setFixingAll(false);
+  };
+
+  const handleExport = () => {
+    const rows = [
+      ["Severity", "Dimension", "Code", "Field", "Message", "Category", "AI Suggestion", "Fix Action"],
+      ...issues.map(i => [i.severity, i.dimension, i.code ?? "", i.field ?? "", i.message, i.category, i.fixSuggestion ?? "", i.fixAction ?? ""]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "validation-report.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const uniqueDims = Array.from(new Set(issues.map(i => i.dimension)));
+
+  return (
+    <>
+      <MetadataHeader
+        title="Validation Center"
+        subtitle="AI-powered data quality checks and one-click fix suggestions"
+        showSearch={false}
+        onExport={handleExport}
+      />
+
+      <main className="flex-1 overflow-y-auto bg-background p-6 space-y-5">
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: "Errors",   count: errors,   color: "text-red-600",    bg: "bg-red-50",    border: "border-red-200",    Icon: AlertCircle   },
+            { label: "Warnings", count: warnings, color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-200",  Icon: AlertTriangle },
+            { label: "Info",     count: infos,    color: "text-blue-600",   bg: "bg-blue-50",   border: "border-blue-200",   Icon: Info          },
+            { label: "Resolved", count: fixedCnt, color: "text-green-600",  bg: "bg-green-50",  border: "border-green-200",  Icon: CheckCircle2  },
+            { label: "Fixable",  count: fixable,  color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-200", Icon: Sparkles      },
+          ].map(({ label, count, color, bg, border, Icon }) => (
+            <div key={label} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3", bg, border)}>
+              <Icon className={cn("w-5 h-5 shrink-0", color)} />
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-foreground leading-none">{count}</p>
+                <p className={cn("text-xs font-medium mt-0.5", color)}>{label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center rounded-lg border border-border bg-muted/30 p-1 gap-0.5">
+            {["all", "error", "warning", "info"].map(v => (
+              <button key={v} onClick={() => setSeverityFilter(v)}
+                className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors capitalize",
+                  severityFilter === v ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                {v === "all" ? "All Severity" : v.charAt(0).toUpperCase() + v.slice(1) + "s"}
+              </button>
+            ))}
+          </div>
+
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+            className="h-8 rounded-md border border-input bg-white px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30">
+            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+
+          <select value={dimensionFilter} onChange={e => setDimensionFilter(e.target.value)}
+            className="h-8 rounded-md border border-input bg-white px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30">
+            <option value="all">All Dimensions</option>
+            {uniqueDims.map(d => <option key={d} value={d}>{DIM_LABELS[d] ?? d}</option>)}
+          </select>
+
+          <div className="ml-auto flex items-center gap-2">
+            {fixable > 0 && (
+              <button onClick={handleFixAll} disabled={fixingAll}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-50">
+                {fixingAll
+                  ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Fixing…</>
+                  : <><Sparkles className="w-3.5 h-3.5" /> Fix All Auto-fixable ({fixable})</>}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Issues */}
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center py-20 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
+              <ShieldCheck className="w-7 h-7 text-green-600" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">No issues</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {issues.filter(i => !i.fixed).length === 0
+                ? "All issues resolved. Data is clean ✓"
+                : "No issues match the active filters."}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {visible.filter(i => !i.fixed).length} open · {visible.filter(i => i.fixed).length} resolved
+            </p>
+            {visible.map(issue => (
+              <IssueCard key={issue.id} issue={issue} onFix={handleFix} onDismiss={handleDismiss} />
+            ))}
+          </div>
+        )}
+
+        {/* AI Engine info */}
+        <div className="flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4">
+          <Sparkles className="w-4 h-4 text-violet-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-violet-700">AI Validation Engine — All 10 Dimensions</p>
+            <p className="text-xs text-violet-600 mt-0.5 leading-relaxed">
+              Validates Accounts, Entities, Departments, Cost Centers, Scenarios, Currencies, Time Periods,
+              Products & Services, Employee Categories, and Doctor Categories. Detects duplicate codes,
+              missing parents, circular hierarchies, invalid field values, and fuzzy name conflicts.
+              Auto-fixable issues can be resolved in one click; others include AI-generated guidance.
+            </p>
+          </div>
+        </div>
+      </main>
+    </>
+  );
+}

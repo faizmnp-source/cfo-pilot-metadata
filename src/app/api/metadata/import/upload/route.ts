@@ -48,4 +48,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return apiResponse({ jobId: job.id, totalRecords: rows.length, headers, previewData: rows.slice(0, PREVIEW_ROWS), missingColumns: missingCols, status
+  return apiResponse({ jobId: job.id, totalRecords: rows.length, headers, previewData: rows.slice(0, PREVIEW_ROWS), missingColumns: missingCols, status: job.status });
+}
