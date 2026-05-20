@@ -97,7 +97,7 @@ export default function ValidationPage() {
 
   const handleDismiss = (error: ValidationError) => {
     if (error.id) {
-      setDismissed((prev) => new Set([...prev, error.id!]));
+      setDismissed((prev) => new Set(Array.from(prev).concat(error.id!)));
     }
   };
 

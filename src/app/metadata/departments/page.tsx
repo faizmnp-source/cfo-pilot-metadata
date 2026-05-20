@@ -18,6 +18,7 @@ interface Department {
   parentName?: string;
   description: string | null;
   isActive: boolean;
+  [key: string]: unknown;
   childCount?: number;
 }
 

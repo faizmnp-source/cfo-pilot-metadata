@@ -9,7 +9,7 @@ function buildTree(items: { id:string; parentId:string|null; [k:string]:unknown 
   const map: NodeMap = {};
   const roots: NodeMap[string][] = [];
   items.forEach(item => {
-    map[item.id] = { ...item, code: (item as any).code ?? (item as any).accountCode ?? "", name: (item as any).name ?? (item as any).accountName ?? "", children: [] };
+    map[item.id] = { id: item.id, parentId: item.parentId, isActive: (item as any).isActive ?? true, code: (item as any).code ?? (item as any).accountCode ?? "", name: (item as any).name ?? (item as any).accountName ?? "", children: [] };
   });
   items.forEach(item => {
     if (item.parentId && map[item.parentId]) map[item.parentId].children.push(map[item.id]);
