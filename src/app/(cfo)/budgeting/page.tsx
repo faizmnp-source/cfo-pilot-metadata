@@ -71,7 +71,7 @@ export default function BudgetingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-default)]">
-                {(budgetLines as any[]).map((line) => {
+                {(budgetLines as unknown as any[]).map((line) => {
                   const isExp = expanded.has(line.id);
                   return (
                     <>
