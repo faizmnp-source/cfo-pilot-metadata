@@ -48,13 +48,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (parsed.data.parentId === params.id) return apiError("Time period cannot be its own parent", 400);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updateData: any = { ...parsed.data };
+  if (parsed.data.startDate !== undefined) updateData.startDate = parsed.data.startDate ? new Date(parsed.data.startDate) : null;
+  if (parsed.data.endDate !== undefined) updateData.endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : null;
+
   const updated = await prisma.timePoint.update({
     where: { id: params.id },
-    data: {
-      ...parsed.data,
-      ...(parsed.data.startDate !== undefined && { startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined }),
-      ...(parsed.data.endDate !== undefined && { endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined }),
-    },
+    data: updateData,
   });
 
   await writeAuditLog({
