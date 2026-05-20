@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env
+.env.local
+*.pem
+/out
+/build
+.DS_Store
+npm-debug.log*
+prisma/migrations/
+coverage/
+uploads/

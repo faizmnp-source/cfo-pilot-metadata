@@ -1,0 +1,428 @@
+// ═══════════════════════════════════════════════════════════════════
+// CFO Pilot — Metadata Management Module
+// Production PostgreSQL Schema  |  Multi-tenant  |  Audit-ready
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enumerations ────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  FINANCE_MANAGER
+  FINANCE_USER
+  VIEWER
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  EXPORT
+  LOGIN
+  BULK_UPDATE
+}
+
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  VALIDATION_FAILED
+  VALIDATION_PASSED
+  IMPORTING
+  COMPLETED
+  FAILED
+}
+
+enum DimensionType {
+  ACCOUNT
+  ENTITY
+  DEPARTMENT
+  COST_CENTER
+  SCENARIO
+  CURRENCY
+  PRODUCT_SERVICE
+  EMPLOYEE_CATEGORY
+  DOCTOR_CATEGORY
+}
+
+enum TenantPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum ErrorSeverity {
+  ERROR
+  WARNING
+  INFO
+}
+
+// ─── Core Tables ─────────────────────────────────────────────────
+
+model Tenant {
+  id          String     @id @default(uuid())
+  name        String
+  slug        String     @unique
+  plan        TenantPlan @default(PROFESSIONAL)
+  isActive    Boolean    @default(true)
+  maxUsers    Int        @default(50)
+  settings    Json       @default("{}")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  users         User[]
+  accounts      Account[]
+  entities      Entity[]
+  departments   Department[]
+  costCenters   CostCenter[]
+  currencies    Currency[]
+  scenarios     Scenario[]
+  products      ProductService[]
+  empCategories EmployeeCategory[]
+  docCategories DoctorCategory[]
+  auditLogs     AuditLog[]
+  importJobs    ImportJob[]
+
+  @@index([slug])
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  name         String
+  passwordHash String
+  role         UserRole @default(FINANCE_USER)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── Account Dimension ───────────────────────────────────────────
+
+model Account {
+  id             String      @id @default(uuid())
+  tenantId       String
+  accountCode    String
+  accountName    String
+  accountType    AccountType
+  parentId       String?
+  reportingGroup String?
+  description    String?
+  isActive       Boolean     @default(true)
+  sortOrder      Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  createdBy      String?
+  updatedBy      String?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children Account[] @relation("AccountHierarchy")
+
+  @@unique([tenantId, accountCode])
+  @@index([tenantId])
+  @@index([tenantId, accountType])
+  @@index([tenantId, parentId])
+  @@index([tenantId, isActive])
+  @@map("accounts")
+}
+
+// ─── Entity Dimension ─────────────────────────────────────────────
+
+model Entity {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  entityCode          String
+  entityName          String
+  parentId            String?
+  ownershipPercentage Decimal? @db.Decimal(5, 2)
+  baseCurrency        String   @default("USD")
+  country             String?
+  taxId               String?
+  address             String?
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  createdBy           String?
+  updatedBy           String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      Entity?      @relation("EntityHierarchy", fields: [parentId], references: [id])
+  children    Entity[]     @relation("EntityHierarchy")
+  departments Department[]
+  costCenters CostCenter[]
+
+  @@unique([tenantId, entityCode])
+  @@index([tenantId])
+  @@index([tenantId, parentId])
+  @@index([tenantId, isActive])
+  @@map("entities")
+}
+
+// ─── Department Dimension ─────────────────────────────────────────
+
+model Department {
+  id             String   @id @default(uuid())
+  tenantId       String
+  departmentCode String
+  departmentName String
+  parentId       String?
+  entityId       String?
+  managerId      String?
+  costType       String?
+  description    String?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String?
+  updatedBy      String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children    Department[] @relation("DeptHierarchy")
+  entity      Entity?      @relation(fields: [entityId], references: [id])
+  costCenters CostCenter[]
+
+  @@unique([tenantId, departmentCode])
+  @@index([tenantId])
+  @@index([tenantId, parentId])
+  @@index([tenantId, entityId])
+  @@map("departments")
+}
+
+// ─── Cost Center Dimension ────────────────────────────────────────
+
+model CostCenter {
+  id             String   @id @default(uuid())
+  tenantId       String
+  costCenterCode String
+  costCenterName String
+  parentId       String?
+  departmentId   String?
+  entityId       String?
+  costType       String?
+  budget         Decimal? @db.Decimal(18, 2)
+  currency       String   @default("USD")
+  description    String?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String?
+  updatedBy      String?
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent     CostCenter? @relation("CCHierarchy", fields: [parentId], references: [id])
+  children   CostCenter[] @relation("CCHierarchy")
+  department Department? @relation(fields: [departmentId], references: [id])
+  entity     Entity?     @relation(fields: [entityId], references: [id])
+
+  @@unique([tenantId, costCenterCode])
+  @@index([tenantId])
+  @@index([tenantId, parentId])
+  @@index([tenantId, departmentId])
+  @@map("cost_centers")
+}
+
+// ─── Currency Dimension ───────────────────────────────────────────
+
+model Currency {
+  id           String   @id @default(uuid())
+  tenantId     String
+  code         String
+  name         String
+  symbol       String
+  exchangeRate Decimal  @default(1) @db.Decimal(18, 6)
+  isBase       Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("currencies")
+}
+
+// ─── Scenario Dimension ───────────────────────────────────────────
+
+model Scenario {
+  id           String   @id @default(uuid())
+  tenantId     String
+  scenarioCode String
+  scenarioName String
+  scenarioType String   @default("BUDGET")
+  fiscalYear   Int
+  description  String?
+  isLocked     Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, scenarioCode])
+  @@index([tenantId])
+  @@map("scenarios")
+}
+
+// ─── Product/Service Dimension ────────────────────────────────────
+
+model ProductService {
+  id          String   @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  category    String?
+  unitOfMeasure String?
+  unitPrice   Decimal? @db.Decimal(18, 4)
+  currency    String   @default("USD")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("product_services")
+}
+
+// ─── Employee Category Dimension ──────────────────────────────────
+
+model EmployeeCategory {
+  id          String   @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  categoryType String?
+  payGrade    String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("employee_categories")
+}
+
+// ─── Doctor Category Dimension (Healthcare) ───────────────────────
+
+model DoctorCategory {
+  id           String   @id @default(uuid())
+  tenantId     String
+  code         String
+  name         String
+  specialty    String?
+  billableRate Decimal? @db.Decimal(18, 2)
+  currency     String   @default("USD")
+  department   String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("doctor_categories")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  tenantId      String
+  tableName     String
+  recordId      String
+  dimensionType DimensionType?
+  action        AuditAction
+  oldValue      Json?
+  newValue      Json?
+  changedFields String[]    @default([])
+  userId        String?
+  userName      String?
+  userEmail     String?
+  userRole      String?
+  ipAddress     String?
+  userAgent     String?
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, tableName])
+  @@index([tenantId, recordId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, userId])
+  @@map("audit_logs")
+}
+
+// ─── Import Job ───────────────────────────────────────────────────
+
+model ImportJob {
+  id               String        @id @default(uuid())
+  tenantId         String
+  fileName         String
+  originalFileName String
+  fileSize         Int
+  dimensionType    DimensionType
+  status           ImportStatus  @default(PENDING)
+  totalRecords     Int           @default(0)
+  validRecords     Int           @default(0)
+  invalidRecords   Int           @default(0)
+  importedRecords  Int           @default(0)
+  validationReport Json?
+  errorSummary     Json?
+  previewData      Json?
+  columnMapping    Json?
+  createdBy        String?
+  createdByName    String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, dimensionType])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("import_jobs")
+}
