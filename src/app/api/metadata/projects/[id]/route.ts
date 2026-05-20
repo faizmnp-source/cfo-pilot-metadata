@@ -127,14 +127,17 @@ export async function PUT(
 
   const { startDate, endDate, ...rest } = parsed.data;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updateData: any = {
+    ...rest,
+    updatedBy: auth.sub,
+    ...(startDate !== undefined && { startDate: startDate != null ? new Date(startDate) : null }),
+    ...(endDate !== undefined && { endDate: endDate != null ? new Date(endDate) : null }),
+  };
+
   const updated = await prisma.project.update({
     where: { id: params.id },
-    data: {
-      ...rest,
-      updatedBy: auth.sub,
-      ...(startDate !== undefined && { startDate: startDate != null ? new Date(startDate) : null }),
-      ...(endDate !== undefined && { endDate: endDate != null ? new Date(endDate) : null }),
-    },
+    data: updateData,
   });
 
   await writeAuditLog({

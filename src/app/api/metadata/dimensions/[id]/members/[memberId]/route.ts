@@ -115,9 +115,10 @@ export async function PUT(
     if (cycle) return apiError("Setting this parent would create a circular hierarchy", 400);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updated = await prisma.dimensionMember.update({
     where: { id: params.memberId },
-    data: parsed.data,
+    data: parsed.data as any,
   });
 
   await writeAuditLog({

@@ -93,16 +93,17 @@ export async function POST(req: NextRequest) {
 
   const { startDate, endDate, ...rest } = parsed.data;
 
-  const record = await prisma.project.create({
-    data: {
-      ...rest,
-      tenantId: auth.tid,
-      createdBy: auth.sub,
-      updatedBy: auth.sub,
-      ...(startDate != null && { startDate: new Date(startDate) }),
-      ...(endDate != null && { endDate: new Date(endDate) }),
-    },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createData: any = {
+    ...rest,
+    tenantId: auth.tid,
+    createdBy: auth.sub,
+    updatedBy: auth.sub,
+    ...(startDate != null && { startDate: new Date(startDate) }),
+    ...(endDate != null && { endDate: new Date(endDate) }),
+  };
+
+  const record = await prisma.project.create({ data: createData });
 
   await writeAuditLog({
     tenantId: auth.tid,
