@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Database, Loader2, Eye, EyeOff } from "lucide-react";
+import { Database, Loader2, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -12,6 +12,19 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set by AuthInterceptor when an API returns 401. We read these from
+  // window.location on mount (avoids needing a Suspense boundary around
+  // useSearchParams).
+  const [expired, setExpired] = useState(false);
+  const [nextPath, setNextPath] = useState<string>("/metadata");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("expired") === "1") setExpired(true);
+    const next = sp.get("next");
+    if (next && next.startsWith("/")) setNextPath(next);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +38,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Login failed");
-      router.push("/metadata");
+      router.push(nextPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -47,6 +60,16 @@ export default function LoginPage() {
 
         <div className="rounded-xl border border-border bg-white p-8 shadow-sm">
           <h2 className="mb-6 text-lg font-semibold text-foreground">Sign in</h2>
+
+          {expired && !error && (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                <div className="font-medium">Your session expired</div>
+                <div className="mt-0.5 text-xs">Sign in again — we'll take you back to where you were.</div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
