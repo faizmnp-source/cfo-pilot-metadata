@@ -83,8 +83,15 @@ export function AddAccountDialog({ open, onClose, onSaved }: Props) {
           },
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to create");
+      let data: any = {};
+      try { data = await res.json(); } catch { /* non-JSON body */ }
+      if (!res.ok) {
+        const detail = data?.error
+          ?? data?.details?.issues?.[0]?.message
+          ?? (res.status === 401 ? "Not signed in — please log in again on this URL"
+              : `HTTP ${res.status}`);
+        throw new Error(detail);
+      }
       toast.success(`✅ Created account ${form.memberCode}`);
       onSaved(data.data);
       setForm(EMPTY);

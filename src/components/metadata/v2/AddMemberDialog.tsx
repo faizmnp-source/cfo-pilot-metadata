@@ -70,8 +70,16 @@ export function AddMemberDialog({ open, dim, dimLabel, onClose, onSaved }: Props
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Failed to create");
+      // Robust parse — server may return empty body on 401 redirect / network blip
+      let data: any = {};
+      try { data = await res.json(); } catch { /* non-JSON body */ }
+      if (!res.ok) {
+        const detail = data?.error
+          ?? data?.details?.issues?.[0]?.message
+          ?? (res.status === 401 ? "Not signed in — please log in again on this URL"
+              : `HTTP ${res.status}`);
+        throw new Error(detail);
+      }
       toast.success(`✅ Created ${TITLE_FOR_DIM[dim]} ${common.memberCode}`);
       onSaved(data.data);
       setCommon({ memberCode: "", memberName: "", description: "", isActive: true, sortOrder: 0 });
