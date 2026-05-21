@@ -1,20 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Settings, Save, CheckCircle, Globe, Calendar,
   Palette, Clock, Building2, DollarSign, AlertCircle,
+  Layers, ToggleLeft, Wand2, Sparkles,
 } from "lucide-react";
-
-const CURRENCIES_SHORT = [
-  "AED","ARS","AUD","BDT","BHD","BRL","CAD","CHF","CLP","CNY",
-  "COP","CZK","DKK","EGP","EUR","GBP","GHS","HKD","HUF","IDR",
-  "ILS","INR","JOD","JPY","KES","KRW","KWD","LKR","MXN","MYR",
-  "NGN","NOK","NPR","NZD","OMR","PEN","PHP","PKR","PLN","QAR",
-  "RON","RUB","SAR","SEK","SGD","THB","TRY","TWD","UAH","USD",
-  "VND","ZAR",
-];
+import { ISO_4217, ISO_TOP } from "@/lib/iso4217";
+import { FISCAL_YEAR_START_OPTIONS, generateTimePeriods, type TimePeriodNode } from "@/lib/time-periods";
 
 const TIMEZONES = [
   "UTC","Asia/Kolkata","Asia/Singapore","Asia/Dubai","Asia/Bangkok",
@@ -37,6 +31,28 @@ interface Settings {
   isSetupComplete: boolean;
 }
 
+// Feature flags (mirror tenant_features table). LocalStorage-backed for now;
+// task #12 wires the real /api/tenant-features endpoint.
+type FeatureFlags = {
+  multi_entity_enabled: boolean;
+  multi_currency_enabled: boolean;
+  intercompany_enabled: boolean;
+  alternate_hierarchy_enabled: boolean;
+  department_enabled: boolean;
+  cost_center_enabled: boolean;
+  project_enabled: boolean;
+};
+
+const DEFAULT_FLAGS: FeatureFlags = {
+  multi_entity_enabled: false,
+  multi_currency_enabled: false,
+  intercompany_enabled: false,
+  alternate_hierarchy_enabled: true,
+  department_enabled: true,
+  cost_center_enabled: false,
+  project_enabled: false,
+};
+
 export default function AppSettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<Settings>({
@@ -55,6 +71,32 @@ export default function AppSettingsPage() {
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
+
+  // Time-period generator state
+  const [periodStartFY, setPeriodStartFY] = useState<number>(new Date().getFullYear());
+  const [periodNumYears, setPeriodNumYears] = useState<number>(3);
+  const [periodPreview, setPeriodPreview] = useState<TimePeriodNode[] | null>(null);
+
+  // Feature flags (localStorage-backed v1)
+  const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FLAGS);
+
+  useEffect(() => {
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_feature_flags") : null;
+      if (raw) setFlags({ ...DEFAULT_FLAGS, ...JSON.parse(raw) });
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveFlag = (key: keyof FeatureFlags, value: boolean) => {
+    const next = { ...flags, [key]: value };
+    setFlags(next);
+    try { window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify(next)); } catch { /* ignore */ }
+  };
+
+  const handleGeneratePeriods = () => {
+    const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
+    setPeriodPreview(nodes);
+  };
 
   useEffect(() => {
     fetch("/api/settings", { credentials: "include" })
@@ -194,11 +236,20 @@ export default function AppSettingsPage() {
               onChange={(e) => setSettings((s) => ({ ...s, reportingCurrency: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {CURRENCIES_SHORT.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              <optgroup label="Most common">
+                {ISO_TOP.map((code) => {
+                  const c = ISO_4217.find((x) => x.code === code)!;
+                  return <option key={code} value={code}>{c.code} — {c.name} ({c.symbol})</option>;
+                })}
+              </optgroup>
+              <optgroup label="All ISO 4217">
+                {ISO_4217.filter((c) => !ISO_TOP.includes(c.code))
+                  .map((c) => (
+                    <option key={c.code} value={c.code}>{c.code} — {c.name} ({c.symbol})</option>
+                  ))}
+              </optgroup>
             </select>
-            <p className="text-xs text-gray-400 mt-1">All FX rates convert to this currency</p>
+            <p className="text-xs text-gray-400 mt-1">All FX rates convert to this currency · {ISO_4217.length} currencies available</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Fiscal Year Start</label>
@@ -207,12 +258,128 @@ export default function AppSettingsPage() {
               onChange={(e) => setSettings((s) => ({ ...s, fiscalYearStart: Number(e.target.value) }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {MONTH_NAMES.map((name, i) => (
-                <option key={i + 1} value={i + 1}>{name} (Month {i + 1})</option>
+              {FISCAL_YEAR_START_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <p className="text-xs text-gray-400 mt-1">Used when generating time dimensions</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {FISCAL_YEAR_START_OPTIONS.find((o) => o.value === settings.fiscalYearStart)?.description ?? "Used when generating time dimensions"}
+            </p>
           </div>
+        </div>
+      </section>
+
+      {/* Time Period Auto-Generation */}
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Wand2 className="h-4 w-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Time Periods — Auto-Generate</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600">
+            Based on your Fiscal Year Start, we'll generate <strong>Year → Quarter → Month</strong> hierarchy automatically (OneStream-style).
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Fiscal Year</label>
+              <input
+                type="number"
+                min={2000}
+                max={2099}
+                value={periodStartFY}
+                onChange={(e) => setPeriodStartFY(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Years</label>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={periodNumYears}
+                onChange={(e) => setPeriodNumYears(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={handleGeneratePeriods}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Generate Preview
+              </button>
+            </div>
+          </div>
+
+          {periodPreview && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-72 overflow-y-auto">
+              <p className="text-xs text-gray-500 mb-2">
+                Generated {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
+                {" "}{periodPreview.filter((n) => n.type === "QUARTER").length} quarters ·
+                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months)
+              </p>
+              <ul className="text-sm space-y-0.5 font-mono">
+                {periodPreview.map((n) => (
+                  <li
+                    key={n.code}
+                    className={
+                      n.type === "YEAR"    ? "font-semibold text-gray-900" :
+                      n.type === "QUARTER" ? "pl-4 text-gray-700"         :
+                                             "pl-8 text-gray-500"
+                    }
+                  >
+                    {n.code} <span className="text-gray-400">— {n.name} · {n.startDate} → {n.endDate}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-700 mt-3">
+                ⚠️ Preview only. Saving these to the Time dimension needs the migrated API route (task #8).
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Optional Dimensions / Feature Flags */}
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <ToggleLeft className="h-4 w-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Optional Dimensions & Modules</h2>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-gray-600 mb-4">
+            Always-on (cannot disable): <strong>Account · Entity · Scenario · Time · Currency</strong>.
+            Toggle the optional dimensions and modules below — your sidebar updates after a refresh.
+          </p>
+          <div className="space-y-3">
+            {[
+              { key: "multi_entity_enabled",   label: "Multi-Entity",          desc: "Enable entity hierarchy + consolidation methods" },
+              { key: "multi_currency_enabled", label: "Multi-Currency / FX",   desc: "Enable the FX rates table and currency translation behaviour" },
+              { key: "intercompany_enabled",   label: "Intercompany (ICP)",    desc: "Enable ICP dimension and elimination tags on Entity" },
+              { key: "department_enabled",     label: "Department",            desc: "Reserve a UD slot for Departments (default ON)" },
+              { key: "cost_center_enabled",    label: "Cost Center",           desc: "Reserve a UD slot for Cost Centers" },
+              { key: "project_enabled",        label: "Project",               desc: "Reserve a UD slot for Projects" },
+              { key: "alternate_hierarchy_enabled", label: "Alternate Hierarchies", desc: "Multiple named hierarchies per dim (statutory vs management view)" },
+            ].map((f) => (
+              <label key={f.key} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{f.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={flags[f.key as keyof FeatureFlags]}
+                  onChange={(e) => saveFlag(f.key as keyof FeatureFlags, e.target.checked)}
+                  className="h-5 w-5 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-amber-700 mt-4">
+            ⚠️ Toggles save to browser only for now. Persisting to the <code>tenant_features</code> table is task #12.
+          </p>
         </div>
       </section>
 

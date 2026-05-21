@@ -32,6 +32,7 @@ const META_NAV_CORE = [
   { href: "/metadata",             label: "Overview",     icon: Layers },
   { href: "/metadata/accounts",    label: "Accounts",     icon: BookOpen },
   { href: "/metadata/entities",    label: "Entities",     icon: Building2 },
+  { href: "/metadata/icp",         label: "ICP",          icon: Link2 },
   { href: "/metadata/scenarios",   label: "Scenarios",    icon: PieChart },
   { href: "/metadata/time",        label: "Time Periods", icon: Clock },
   { href: "/metadata/currencies",  label: "Currencies",   icon: Globe },

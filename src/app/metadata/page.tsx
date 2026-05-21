@@ -38,6 +38,7 @@ interface Stats {
 const DIMENSIONS = [
   { href: "/metadata/accounts",    icon: BookOpen,     label: "Chart of Accounts",       desc: "Financial account hierarchy (Assets, Liabilities, Revenue, Expense, Statistical, KPI)", color: "text-blue-600",   bg: "bg-blue-50",   statKey: "accounts" },
   { href: "/metadata/entities",    icon: Building2,    label: "Legal Entities",           desc: "Business units, subsidiaries, ownership %, base currency",                              color: "text-purple-600", bg: "bg-purple-50", statKey: "entities" },
+  { href: "/metadata/icp",         icon: Link2,        label: "Intercompany Partners",    desc: "ICP counterparties for intercompany eliminations and consolidation",                    color: "text-cyan-600",   bg: "bg-cyan-50",   statKey: "icps" },
   { href: "/metadata/scenarios",   icon: PieChart,     label: "Scenarios",                desc: "Actual, Budget, Forecast, What-If — version-controlled and frozen-able",                color: "text-indigo-600", bg: "bg-indigo-50", statKey: "scenarios" },
   { href: "/metadata/time",        icon: Clock,        label: "Time Periods",             desc: "Fiscal years, quarters, months — handles non-Jan fiscal years",                          color: "text-cyan-600",   bg: "bg-cyan-50",   statKey: "timePoints" },
   { href: "/metadata/currencies",  icon: Globe,        label: "Currencies",               desc: "ISO 4217 prefilled, base currency per tenant",                                           color: "text-teal-600",   bg: "bg-teal-50",   statKey: "currencies" },

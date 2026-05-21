@@ -19,6 +19,7 @@ import {
   LogOut,
   Settings,
   User,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ const alwaysOnNav = [
   { label: "Dashboard",  href: "/metadata",            icon: LayoutDashboard, exact: true },
   { label: "Accounts",   href: "/metadata/accounts",   icon: BookOpen },
   { label: "Entities",   href: "/metadata/entities",   icon: Building2 },
+  { label: "ICP",        href: "/metadata/icp",        icon: GitBranch },
   { label: "Scenarios",  href: "/metadata/scenarios",  icon: Layers },
   { label: "Time",       href: "/metadata/time",       icon: Calendar },
   { label: "Currencies", href: "/metadata/currencies", icon: Banknote },
@@ -159,7 +161,7 @@ export function MetadataSidebar({
           <div className="mt-4 rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p className="mb-1 font-medium text-foreground">Optional dimensions</p>
             <p className="leading-snug">
-              ICP, Department, Cost Center, Project, and UD1–UD8 are off by default.
+              Department, Cost Center, Project, and UD1–UD8 are off by default.
               Enable in{" "}
               <Link href="/metadata/settings" className="text-primary underline">
                 Settings → Features
