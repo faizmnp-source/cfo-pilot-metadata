@@ -186,6 +186,17 @@ export default function EntitiesPage() {
       const params = new URLSearchParams({
         page: String(page), pageSize: String(PAGE_SIZE), search, sortBy: sortKey, sortDir,
       });
+      // Try v2 first
+      const v2res = await fetch(`/api/v2/members/entity?${params}`, { credentials: "include" });
+      if (v2res.ok) {
+        const v2 = await v2res.json();
+        const mapped = (v2?.data?.data ?? []).map(mapV2Entity);
+        setEntities(mapped);
+        setTotal(v2?.data?.total ?? mapped.length);
+        setTreeData(buildTree(mapped));
+        return;
+      }
+      // Fall back to legacy
       const res = await fetch(`/api/metadata/entities?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -420,11 +431,12 @@ export default function EntitiesPage() {
             nodes={treeData}
             onEdit={(node) => { const e = entities.find((x) => x.id === node.id); if (e) { setEditRecord(e); setFormOpen(true); } }}
             onDelete={(node) => { const e = entities.find((x) => x.id === node.id); if (e) handleDelete(e); }}
-            onAdd={() => { setEditRecord(null); setFormOpen(true); }}
+            onAdd={() => { setEditRecord(null); setV2DialogOpen(true); }}
           />
         )}
       </main>
 
+      {/* Legacy edit modal — kept until Slice 3.2 ships v2 edit dialog */}
       {formOpen && (
         <EntityForm
           entity={editRecord}
@@ -433,6 +445,14 @@ export default function EntitiesPage() {
           onClose={() => { setFormOpen(false); setEditRecord(null); }}
         />
       )}
+
+      {/* v2 Add Entity dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="entity"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchEntities()}
+      />
     </>
   );
 }
