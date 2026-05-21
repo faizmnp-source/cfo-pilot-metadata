@@ -176,6 +176,7 @@ export default function EntitiesPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<Entity | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [consolEditId, setConsolEditId] = useState<string | null>(null);
