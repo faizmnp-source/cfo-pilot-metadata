@@ -27,7 +27,7 @@ interface ParsedRow {
   error?: string;
 }
 
-type RowResult = { row: number; status: "created" | "skipped" | "failed"; detail?: string };
+type RowResult = { row: number; status: "created" | "exists" | "skipped" | "failed"; detail?: string };
 
 export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onImported }: Props) {
   const spec = TEMPLATES[dim];
@@ -124,12 +124,33 @@ export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onI
           body: JSON.stringify(body),
         });
         let data: any = {}; try { data = await res.json(); } catch {}
-        if (!res.ok) {
-          rowResults.push({ row: r.rowIndex, status: "failed",
-            detail: data?.error ?? data?.details?.issues?.[0]?.message ?? `HTTP ${res.status}` });
-        } else {
-          codeToId[String(r.values.code)] = data.data.id;
+
+        if (res.status === 201 || res.status === 200) {
+          codeToId[String(r.values.code)] = data?.data?.id;
           rowResults.push({ row: r.rowIndex, status: "created" });
+        } else if (res.status === 409) {
+          // Already exists — try to resolve its id so hierarchy edges still wire up
+          try {
+            const listRes = await fetch(
+              `/api/v2/members/${dim}?search=${encodeURIComponent(String(r.values.code))}&pageSize=1`,
+              { credentials: "include" }
+            );
+            const listData = await listRes.json();
+            const found = listData?.data?.data?.find((m: any) => m.memberCode === String(r.values.code));
+            if (found?.id) codeToId[String(r.values.code)] = found.id;
+          } catch { /* ignore */ }
+          rowResults.push({ row: r.rowIndex, status: "exists", detail: "code already exists — skipped" });
+        } else if (res.status === 401) {
+          rowResults.push({ row: r.rowIndex, status: "failed", detail: "Not signed in — log out and back in on this URL" });
+        } else if (res.status === 422) {
+          const issue = data?.details?.issues?.[0];
+          rowResults.push({ row: r.rowIndex, status: "failed",
+            detail: `Validation: ${issue?.path?.join(".") ?? ""} ${issue?.message ?? "invalid"}`.trim() });
+        } else {
+          rowResults.push({ row: r.rowIndex, status: "failed",
+            detail: data?.error
+              ?? data?.details?.issues?.[0]?.message
+              ?? `HTTP ${res.status} ${res.statusText || ""}`.trim() });
         }
       } catch (e: any) {
         rowResults.push({ row: r.rowIndex, status: "failed", detail: e?.message ?? "Network error" });
@@ -164,13 +185,14 @@ export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onI
     setImporting(false);
 
     const created = rowResults.filter((r) => r.status === "created").length;
+    const exists  = rowResults.filter((r) => r.status === "exists").length;
     const failed  = rowResults.filter((r) => r.status === "failed").length;
     const skipped = rowResults.filter((r) => r.status === "skipped").length;
-    if (failed + skipped === 0) {
-      toast.success(`✅ Imported ${created} members + ${edgesCreated} edges`);
+    if (failed === 0) {
+      toast.success(`✅ ${created} created · ${exists} already existed · ${edgesCreated} edges`);
       onImported();
     } else {
-      toast.error(`Imported ${created} · Failed ${failed} · Skipped ${skipped} · Edges ${edgesCreated}/${edgesCreated + edgesFailed}`);
+      toast.error(`Created ${created} · Exists ${exists} · Failed ${failed} · Skipped ${skipped} · Edges ${edgesCreated}/${edgesCreated + edgesFailed}`);
     }
   };
 
@@ -267,6 +289,7 @@ export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onI
                       return (
                         <tr key={r.rowIndex} className={cn("border-t border-border/50",
                           rr?.status === "created" ? "bg-emerald-50" :
+                          rr?.status === "exists"  ? "bg-blue-50"    :
                           rr?.status === "failed"  ? "bg-red-50"     :
                           r.error                  ? "bg-amber-50"   : ""
                         )}>
