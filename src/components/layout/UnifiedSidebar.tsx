@@ -21,21 +21,23 @@ const CFO_NAV = [
   { href: "/excel",         label: "Excel Integration",   icon: Table2 },
 ];
 
+// Metadata v2 (agreed 2026-05-21):
+//   always-on (5):     Account · Entity · Scenario · Time · Currency
+//   toggleable (1):    ICP                  (intercompany_enabled)
+//   optional core (3): Department · Cost Center · Project
+//   customer-defined:  UD1–UD8
+// Only the always-on 5 + tools render by default. Optional items appear when
+// their feature flag is on, configured in Settings → Features.
 const META_NAV_CORE = [
   { href: "/metadata",             label: "Overview",     icon: Layers },
   { href: "/metadata/accounts",    label: "Accounts",     icon: BookOpen },
   { href: "/metadata/entities",    label: "Entities",     icon: Building2 },
-  { href: "/metadata/departments", label: "Departments",  icon: GitBranch },
-  { href: "/metadata/cost-centers",label: "Cost Centers", icon: DollarSign },
   { href: "/metadata/scenarios",   label: "Scenarios",    icon: PieChart },
-  { href: "/metadata/currencies",  label: "Currencies",   icon: Globe },
   { href: "/metadata/time",        label: "Time Periods", icon: Clock },
-  { href: "/metadata/icp",         label: "ICP",          icon: Link2 },
-  { href: "/metadata/projects",    label: "Projects",     icon: FolderKanban },
+  { href: "/metadata/currencies",  label: "Currencies",   icon: Globe },
 ];
 
 const META_NAV_BOTTOM = [
-  { href: "/metadata/fx-rates",    label: "FX Rates",             icon: TrendingUp },
   { href: "/metadata/import",      label: "Import Wizard",        icon: Upload },
   { href: "/metadata/validation",  label: "Validation",           icon: ShieldCheck },
   { href: "/metadata/audit-logs",  label: "Audit Logs",           icon: History },
