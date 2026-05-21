@@ -6,10 +6,11 @@
 // (Those pages still exist as bookmarkable deep links.)
 
 import { useEffect, useState } from "react";
-import { Library, Search, RefreshCw } from "lucide-react";
+import { Library, Search, RefreshCw, Upload } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { HierarchyTreeView } from "@/components/metadata/v2/HierarchyTreeView";
 import { AddMemberDialog, type SupportedDim } from "@/components/metadata/v2/AddMemberDialog";
+import { ExcelImport } from "@/components/metadata/v2/ExcelImport";
 
 interface DimOption { slug: SupportedDim; label: string; description: string; }
 
@@ -29,6 +30,7 @@ export default function DimensionLibraryPage() {
   const [selectedDim, setSelectedDim] = useState<SupportedDim>("account");
   const [search, setSearch] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [features, setFeatures] = useState<Record<string, boolean>>({});
 
@@ -89,7 +91,13 @@ export default function DimensionLibraryPage() {
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <span>Total members: <strong className="text-foreground">{counts[selectedDim] ?? "—"}</strong></span>
             <span className="text-gray-300">·</span>
-            <span>Hover any row for actions: Add child · Edit · Copy · Move · Delete</span>
+            <span>Right-click for actions · drag to reparent</span>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="ml-2 flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+            >
+              <Upload className="h-3 w-3" /> Import Excel
+            </button>
           </div>
         </div>
 
@@ -98,6 +106,14 @@ export default function DimensionLibraryPage() {
           key={`${selectedDim}-${refreshKey}`}   // remount on dim/refresh
           dimensionSlug={selectedDim}
           hierarchyCode="default"
+        />
+
+        {/* Excel import dialog */}
+        <ExcelImport
+          open={importOpen}
+          dim={selectedDim}
+          onClose={() => setImportOpen(false)}
+          onImported={() => { setImportOpen(false); setRefreshKey((k) => k + 1); }}
         />
       </main>
     </>
