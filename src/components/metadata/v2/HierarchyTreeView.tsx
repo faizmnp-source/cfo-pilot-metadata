@@ -36,6 +36,7 @@ interface Props {
 }
 
 interface CtxMenu { x: number; y: number; node: TreeNode; }
+interface AddCtx { parentId: string | null; mode: "child" | "sibling" | "root"; siblingOfCode?: string; parentCode?: string; }
 
 export function HierarchyTreeView({
   dimensionSlug, hierarchyCode = "default", className,
@@ -50,10 +51,14 @@ export function HierarchyTreeView({
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
 
   // Dialog state
-  const [addContext, setAddContext] = useState<{ parentId: string | null } | null>(null);
+  const [addContext, setAddContext] = useState<AddCtx | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [copyId, setCopyId] = useState<string | null>(null);
   const [moveNode, setMoveNode] = useState<TreeNode | null>(null);
+
+  // Drag state
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,6 +182,46 @@ export function HierarchyTreeView({
     setCtxMenu({ x: e.clientX, y: e.clientY, node });
   };
 
+  // ─── Drag and drop reparenting ────────────────────────────────
+  const handleDrop = async (draggedId: string, newParentId: string | null) => {
+    if (draggedId === newParentId) return;
+    try {
+      // Pull existing edges so we can remove the dragged node's current parent edge
+      const edgesRes = await fetch(
+        `/api/v2/hierarchy/${dimensionSlug}?hierarchy=${hierarchyCode}&format=edges`,
+        { credentials: "include" }
+      );
+      const edgesData = await edgesRes.json();
+      const myEdges = (edgesData?.data?.edges ?? []).filter((e: any) => e.childMemberId === draggedId);
+      for (const e of myEdges) {
+        await fetch(`/api/v2/hierarchy/${dimensionSlug}/${e.id}`, { method: "DELETE", credentials: "include" });
+      }
+
+      // If newParentId is null → leave unparented (orphan list will pick it up)
+      if (newParentId) {
+        const res = await fetch(`/api/v2/hierarchy/${dimensionSlug}`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hierarchyCode, parentMemberId: newParentId, childMemberId: draggedId,
+            operator: "ADD", weight: 1,
+          }),
+        });
+        if (!res.ok) {
+          let data: any = {}; try { data = await res.json(); } catch {}
+          throw new Error(data?.error ?? `HTTP ${res.status}`);
+        }
+      }
+      toast.success(newParentId ? "Member moved" : "Member detached (now unparented)");
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Move failed");
+    } finally {
+      setDraggingId(null);
+      setDropTargetId(null);
+    }
+  };
+
   const selectedNode = selectedId
     ? (findNode(tree ?? [], selectedId) ?? orphans.find((o) => o.id === selectedId) ?? null)
     : null;
@@ -199,7 +244,7 @@ export function HierarchyTreeView({
         No members yet in the <code>{dimensionSlug}</code> dimension. Add the first one to start building the hierarchy.
         {error && <div className="mt-2 text-amber-600 text-xs">⚠️ {error}</div>}
         <div className="mt-3">
-          <button onClick={() => setAddContext({ parentId: null })}
+          <button onClick={() => setAddContext({ parentId: null, mode: "root" })}
             className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
             <Plus className="inline h-3.5 w-3.5 mr-1" /> Add first member
           </button>
@@ -221,7 +266,7 @@ export function HierarchyTreeView({
             <span className="ml-2 text-[10px] text-muted-foreground">Right-click any node for actions</span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setAddContext({ parentId: null })}
+            <button onClick={() => setAddContext({ parentId: null, mode: "root" })}
               className="flex items-center gap-1 rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20">
               <Plus className="h-3 w-3" /> Add Root
             </button>
@@ -233,12 +278,24 @@ export function HierarchyTreeView({
           </div>
         </div>
 
-        <ul className="p-2 font-mono text-sm" onClick={() => setSelectedId(null)}>
+        <ul
+          className="p-2 font-mono text-sm"
+          onClick={() => setSelectedId(null)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const draggedId = e.dataTransfer.getData("text/member-id");
+            if (draggedId) handleDrop(draggedId, null); // drop on background = detach
+          }}
+        >
           {(tree ?? []).map((node) => (
             <TreeRow key={node.id} node={node} depth={0} expanded={expanded} onToggle={toggle}
               selectedId={selectedId} onSelect={setSelectedId}
               onContextMenu={openContextMenu}
-              onAddChild={(n) => setAddContext({ parentId: n.id })}
+              draggingId={draggingId} dropTargetId={dropTargetId}
+              setDraggingId={setDraggingId} setDropTargetId={setDropTargetId}
+              onDropOn={handleDrop}
+              onAddChild={(n) => setAddContext({ parentId: n.id, mode: "child", parentCode: n.memberCode })}
               onEdit={(n) => setEditId(n.id)}
               onCopy={(n) => setCopyId(n.id)}
               onMove={(n) => setMoveNode(n)}
@@ -248,14 +305,17 @@ export function HierarchyTreeView({
           {orphans.length > 0 && (
             <li className="mt-3">
               <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 rounded">
-                Unparented members ({orphans.length}) — right-click → Move into the tree
+                Unparented members ({orphans.length}) — drag onto the tree, or right-click → Move
               </div>
               <ul>
                 {orphans.map((node) => (
                   <TreeRow key={node.id} node={node} depth={0} expanded={expanded} onToggle={toggle}
                     selectedId={selectedId} onSelect={setSelectedId}
                     onContextMenu={openContextMenu}
-                    onAddChild={(n) => setAddContext({ parentId: n.id })}
+                    draggingId={draggingId} dropTargetId={dropTargetId}
+                    setDraggingId={setDraggingId} setDropTargetId={setDropTargetId}
+                    onDropOn={handleDrop}
+                    onAddChild={(n) => setAddContext({ parentId: n.id, mode: "child", parentCode: n.memberCode })}
                     onEdit={(n) => setEditId(n.id)}
                     onCopy={(n) => setCopyId(n.id)}
                     onMove={(n) => setMoveNode(n)}
@@ -272,8 +332,18 @@ export function HierarchyTreeView({
       <PropertiesPanel
         node={selectedNode}
         onEdit={() => selectedNode && setEditId(selectedNode.id)}
-        onAddChild={() => selectedNode && setAddContext({ parentId: selectedNode.id })}
-        onAddSibling={() => selectedNode && setAddContext({ parentId: selectedNode.parentId ?? null })}
+        onAddChild={() => selectedNode && setAddContext({
+          parentId: selectedNode.id, mode: "child", parentCode: selectedNode.memberCode,
+        })}
+        onAddSibling={() => selectedNode && (() => {
+          const sibParentId = selectedNode.parentId ?? null;
+          const sibParentNode = sibParentId ? findNode(tree ?? [], sibParentId) : null;
+          setAddContext({
+            parentId: sibParentId, mode: "sibling",
+            siblingOfCode: selectedNode.memberCode,
+            parentCode: sibParentNode?.memberCode,
+          });
+        })()}
         onCopy={() => selectedNode && setCopyId(selectedNode.id)}
         onMove={() => selectedNode && setMoveNode(selectedNode)}
         onDelete={() => selectedNode && handleDelete(selectedNode)}
@@ -283,8 +353,21 @@ export function HierarchyTreeView({
       {ctxMenu && (
         <ContextMenu
           x={ctxMenu.x} y={ctxMenu.y} node={ctxMenu.node}
-          onAddChild={() => { setAddContext({ parentId: ctxMenu.node.id }); setCtxMenu(null); }}
-          onAddSibling={() => { setAddContext({ parentId: ctxMenu.node.parentId ?? null }); setCtxMenu(null); }}
+          onAddChild={() => {
+            setAddContext({ parentId: ctxMenu.node.id, mode: "child", parentCode: ctxMenu.node.memberCode });
+            setCtxMenu(null);
+          }}
+          onAddSibling={() => {
+            const sibParentId = ctxMenu.node.parentId ?? null;
+            const sibParentNode = sibParentId ? findNode(tree ?? [], sibParentId) : null;
+            setAddContext({
+              parentId: sibParentId,
+              mode: "sibling",
+              siblingOfCode: ctxMenu.node.memberCode,
+              parentCode: sibParentNode?.memberCode,
+            });
+            setCtxMenu(null);
+          }}
           onEdit={() => { setEditId(ctxMenu.node.id); setCtxMenu(null); }}
           onCopy={() => { setCopyId(ctxMenu.node.id); setCtxMenu(null); }}
           onMove={() => { setMoveNode(ctxMenu.node); setCtxMenu(null); }}
@@ -295,8 +378,20 @@ export function HierarchyTreeView({
 
       {/* Dialogs */}
       {addContext && (
-        <AddMemberDialog open dim={dimensionSlug} parentMemberId={addContext.parentId ?? undefined}
-          onClose={() => setAddContext(null)} onSaved={() => { setAddContext(null); load(); }} />
+        <AddMemberDialog
+          open
+          dim={dimensionSlug}
+          parentMemberId={addContext.parentId ?? undefined}
+          headerOverride={
+            addContext.mode === "sibling"
+              ? `Add sibling of ${addContext.siblingOfCode}${addContext.parentCode ? ` (under ${addContext.parentCode})` : " (as new root)"}`
+              : addContext.mode === "child"
+              ? `Add child of ${addContext.parentCode}`
+              : undefined
+          }
+          onClose={() => setAddContext(null)}
+          onSaved={() => { setAddContext(null); load(); }}
+        />
       )}
       {editId && (
         <AddMemberDialog open dim={dimensionSlug} mode="edit" memberId={editId}
@@ -327,6 +422,11 @@ interface RowProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, node: TreeNode) => void;
+  draggingId: string | null;
+  dropTargetId: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDropTargetId: (id: string | null) => void;
+  onDropOn: (draggedId: string, newParentId: string | null) => void;
   onAddChild: (n: TreeNode) => void;
   onEdit: (n: TreeNode) => void;
   onCopy: (n: TreeNode) => void;
@@ -335,21 +435,46 @@ interface RowProps {
 }
 
 function TreeRow(p: RowProps) {
-  const { node, depth, expanded, onToggle, selectedId, onSelect, onContextMenu } = p;
+  const { node, depth, expanded, onToggle, selectedId, onSelect, onContextMenu,
+          draggingId, dropTargetId, setDraggingId, setDropTargetId, onDropOn } = p;
   const hasChildren = node.children.length > 0;
   const isOpen = expanded.has(node.id);
   const isSelected = selectedId === node.id;
+  const isDragging = draggingId === node.id;
+  const isDropTarget = dropTargetId === node.id && draggingId && draggingId !== node.id;
 
   return (
     <li>
       <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/member-id", node.id);
+          e.dataTransfer.effectAllowed = "move";
+          setDraggingId(node.id);
+        }}
+        onDragEnd={() => { setDraggingId(null); setDropTargetId(null); }}
+        onDragOver={(e) => {
+          if (!draggingId || draggingId === node.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "move";
+          if (dropTargetId !== node.id) setDropTargetId(node.id);
+        }}
+        onDragLeave={() => { if (dropTargetId === node.id) setDropTargetId(null); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const draggedId = e.dataTransfer.getData("text/member-id");
+          if (draggedId && draggedId !== node.id) onDropOn(draggedId, node.id);
+        }}
         className={cn(
-          "group flex items-center gap-2 rounded px-2 py-1",
+          "group flex items-center gap-2 rounded px-2 py-1 cursor-grab active:cursor-grabbing",
           isSelected ? "bg-primary/10" : "hover:bg-muted/60",
+          isDragging && "opacity-40",
+          isDropTarget && "ring-2 ring-emerald-400 bg-emerald-50",
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={(e) => {
-          // Don't steal clicks meant for the chevron / action buttons
           if ((e.target as HTMLElement).closest("button")) return;
           e.stopPropagation();
           onSelect(node.id);

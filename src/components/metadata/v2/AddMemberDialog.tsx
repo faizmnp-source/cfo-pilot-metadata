@@ -27,6 +27,7 @@ interface Props {
   mode?: "add" | "edit" | "copy";  // default 'add'
   memberId?: string;          // required for edit/copy — prefills form from this member
   parentMemberId?: string;    // for add: also create a hierarchy edge under this parent
+  headerOverride?: string;    // custom dialog title (e.g. 'Add sibling of 4100 (under 4000)')
   onClose: () => void;
   onSaved: (created: any) => void;
 }
@@ -43,7 +44,7 @@ const inputCls =
 
 export function AddMemberDialog({
   open, dim, dimLabel,
-  mode = "add", memberId, parentMemberId,
+  mode = "add", memberId, parentMemberId, headerOverride,
   onClose, onSaved,
 }: Props) {
   const [common, setCommon] = useState({
@@ -144,7 +145,12 @@ export function AddMemberDialog({
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-lg font-semibold text-foreground">
-            {mode === "edit" ? "Edit" : mode === "copy" ? "Duplicate" : parentMemberId ? "Add child to" : "Add"} {dimLabel ?? TITLE_FOR_DIM[dim]}
+            {headerOverride ?? (
+              mode === "edit" ? `Edit ${dimLabel ?? TITLE_FOR_DIM[dim]}` :
+              mode === "copy" ? `Duplicate ${dimLabel ?? TITLE_FOR_DIM[dim]}` :
+              parentMemberId ? `Add child to ${dimLabel ?? TITLE_FOR_DIM[dim]}` :
+              `Add ${dimLabel ?? TITLE_FOR_DIM[dim]}`
+            )}
             {prefilling && <Loader2 className="inline ml-2 h-4 w-4 animate-spin text-muted-foreground" />}
           </h2>
           <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted">
