@@ -96,6 +96,17 @@ export default function AppSettingsPage() {
   const handleGeneratePeriods = () => {
     const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
     setPeriodPreview(nodes);
+    // Persist to localStorage so the Time dimension page picks them up
+    // until the API route is migrated (task #8).
+    try {
+      window.localStorage.setItem("cfo_pilot_time_periods", JSON.stringify(nodes));
+      window.localStorage.setItem("cfo_pilot_time_periods_meta", JSON.stringify({
+        fiscalYearStartMonth: settings.fiscalYearStart,
+        startFY: periodStartFY,
+        numYears: periodNumYears,
+        generatedAt: new Date().toISOString(),
+      }));
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -314,11 +325,12 @@ export default function AppSettingsPage() {
           </div>
 
           {periodPreview && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-72 overflow-y-auto">
-              <p className="text-xs text-gray-500 mb-2">
-                Generated {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
+            <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/40 max-h-72 overflow-y-auto">
+              <p className="text-xs text-emerald-700 mb-2 font-medium">
+                ✅ Generated &amp; saved {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
                 {" "}{periodPreview.filter((n) => n.type === "QUARTER").length} quarters ·
-                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months)
+                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months) — visible now on{" "}
+                <a href="/metadata/time" className="underline">Time dimension page</a>.
               </p>
               <ul className="text-sm space-y-0.5 font-mono">
                 {periodPreview.map((n) => (
@@ -335,7 +347,7 @@ export default function AppSettingsPage() {
                 ))}
               </ul>
               <p className="text-xs text-amber-700 mt-3">
-                ⚠️ Preview only. Saving these to the Time dimension needs the migrated API route (task #8).
+                ⚠️ Saved to browser only. Full DB persistence kicks in after API migration (task #8).
               </p>
             </div>
           )}

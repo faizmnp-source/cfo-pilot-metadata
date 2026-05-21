@@ -166,7 +166,37 @@ export default function TimePage() {
       setTimePoints(data.data ?? []);
       setTotal(data.total ?? 0);
     } catch {
-      toast.error("Failed to load time periods");
+      // API migration pending — fall back to time periods generated via
+      // Settings → Time Periods Auto-Generate (stored in localStorage).
+      try {
+        const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_time_periods") : null;
+        if (raw) {
+          const periods = JSON.parse(raw) as Array<{
+            code: string; name: string; type: string; fiscalYear: number;
+            startDate: string; endDate: string; parentCode: string | null;
+            monthIndex?: number; quarterIndex?: number;
+          }>;
+          const mapped: TimePoint[] = periods.map((p, i) => ({
+            id: `local-${p.code}`,
+            code: p.code,
+            name: p.name,
+            periodType: p.type,
+            fiscalYear: p.fiscalYear,
+            fiscalPeriod: p.monthIndex != null ? p.monthIndex + 1 : (p.quarterIndex ?? null),
+            startDate: p.startDate,
+            endDate: p.endDate,
+            parentId: null,
+            sortOrder: i,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          }));
+          setTimePoints(mapped);
+          setTotal(mapped.length);
+          toast.success(`Loaded ${mapped.length} periods from Settings (browser cache).`);
+          return;
+        }
+      } catch { /* ignore */ }
+      toast.error("Failed to load time periods. Go to Settings → Time Periods Auto-Generate to seed them.");
     } finally {
       setLoading(false);
     }

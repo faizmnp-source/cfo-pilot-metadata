@@ -18,6 +18,27 @@ interface Currency {
   createdAt: string;
 }
 
+// Prepend a virtual "Reporting Currency" aggregate member at the top of the
+// list. Every fact under this member is shown in the tenant's reporting
+// currency (after FX translation). Mirrors OneStream's translated-currency
+// aggregate. Virtual = not editable, not deletable; lives in metadata only.
+function prependReportingAggregate(rows: Currency[], reportingCode?: string): Currency[] {
+  const base = rows.find((c) => c.isBase);
+  const code = reportingCode ?? base?.code ?? "USD";
+  const symbol = base?.symbol ?? "$";
+  const reporting: Currency = {
+    id: "virtual-reporting",
+    code: "REPORTING",
+    name: `Reporting Currency (${code})`,
+    symbol,
+    exchangeRate: 1,
+    isBase: false,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+  return [reporting, ...rows.filter((r) => r.id !== "virtual-reporting")];
+}
+
 const COLUMNS: Column<Currency>[] = [
   {
     key: "code",
@@ -104,9 +125,36 @@ export default function CurrenciesPage() {
       const res = await fetch(`/api/metadata/currencies?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setCurrencies(data.data ?? []);
-      setTotal(data.total ?? 0);
+      const apiCurrencies: Currency[] = data.data ?? [];
+      setCurrencies(prependReportingAggregate(apiCurrencies));
+      setTotal((data.total ?? 0) + 1);
     } catch {
+      // Fallback: use the in-app ISO 4217 catalog + prepend the Reporting
+      // aggregate member. Picks reporting currency from Settings (localStorage).
+      try {
+        const { ISO_4217, ISO_BY_CODE } = await import("@/lib/iso4217");
+        const reportingCode = (() => {
+          try {
+            const raw = window.localStorage.getItem("cfo_pilot_settings");
+            if (raw) return JSON.parse(raw).reportingCurrency ?? "USD";
+          } catch { /* ignore */ }
+          return "USD";
+        })();
+        const all: Currency[] = ISO_4217.map((c, i) => ({
+          id: `iso-${c.code}`,
+          code: c.code,
+          name: c.name,
+          symbol: c.symbol,
+          exchangeRate: c.code === reportingCode ? 1 : 0,
+          isBase: c.code === reportingCode,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        }));
+        setCurrencies(prependReportingAggregate(all, reportingCode));
+        setTotal(all.length + 1);
+        toast.success(`Loaded ${all.length} ISO 4217 currencies + 1 Reporting aggregate.`);
+        return;
+      } catch { /* ignore */ }
       toast.error("Failed to load currencies");
     } finally {
       setLoading(false);
