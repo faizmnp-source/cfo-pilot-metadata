@@ -9,7 +9,7 @@ import {
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
-import { HierarchyTreeView } from "@/components/metadata/HierarchyTreeView";
+import { HierarchyTreeView } from "@/components/metadata/v2/HierarchyTreeView";
 import { AccountForm } from "@/components/metadata/AccountForm";
 import { AddAccountDialog } from "@/components/metadata/v2/AddAccountDialog";
 import { cn } from "@/lib/utils";

@@ -5,7 +5,7 @@
 // Each variant POSTs to /api/v2/members/<dim> with the right typed
 // properties bag. Audit + duplicate-check handled server-side.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,10 @@ export type SupportedDim =
 interface Props {
   open: boolean;
   dim: SupportedDim;
-  dimLabel?: string;       // optional display name override
+  dimLabel?: string;          // optional display name override
+  mode?: "add" | "edit" | "copy";  // default 'add'
+  memberId?: string;          // required for edit/copy — prefills form from this member
+  parentMemberId?: string;    // for add: also create a hierarchy edge under this parent
   onClose: () => void;
   onSaved: (created: any) => void;
 }
@@ -38,13 +41,40 @@ const TITLE_FOR_DIM: Record<SupportedDim, string> = {
 const inputCls =
   "w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
-export function AddMemberDialog({ open, dim, dimLabel, onClose, onSaved }: Props) {
+export function AddMemberDialog({
+  open, dim, dimLabel,
+  mode = "add", memberId, parentMemberId,
+  onClose, onSaved,
+}: Props) {
   const [common, setCommon] = useState({
     memberCode: "", memberName: "", description: "",
     isActive: true, sortOrder: 0,
   });
   const [props, setProps] = useState<Record<string, any>>(() => defaultPropsFor(dim));
   const [saving, setSaving] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+
+  // Prefill form for edit/copy modes
+  useEffect(() => {
+    if (!open || mode === "add" || !memberId) return;
+    setPrefilling(true);
+    fetch(`/api/v2/members/${dim}/${memberId}`, { credentials: "include" })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d?.error ?? "Failed to load member");
+        const m = d.data;
+        setCommon({
+          memberCode: mode === "copy" ? `${m.memberCode}-copy` : m.memberCode,
+          memberName: mode === "copy" ? `${m.memberName} (copy)` : m.memberName,
+          description: m.description ?? "",
+          isActive: m.isActive,
+          sortOrder: m.sortOrder ?? 0,
+        });
+        setProps({ ...defaultPropsFor(dim), ...(m.properties ?? {}) });
+      })
+      .catch((e) => toast.error(e?.message ?? "Failed to load"))
+      .finally(() => setPrefilling(false));
+  }, [open, mode, memberId, dim]);
 
   if (!open) return null;
   const setC = <K extends keyof typeof common>(k: K, v: (typeof common)[K]) =>
@@ -65,12 +95,15 @@ export function AddMemberDialog({ open, dim, dimLabel, onClose, onSaved }: Props
         sortOrder: common.sortOrder,
         properties: cleanProps(dim, props),
       };
-      const res = await fetch(`/api/v2/members/${dim}`, {
-        method: "POST", credentials: "include",
+      const url = mode === "edit"
+        ? `/api/v2/members/${dim}/${memberId}`
+        : `/api/v2/members/${dim}`;
+      const method = mode === "edit" ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      // Robust parse — server may return empty body on 401 redirect / network blip
       let data: any = {};
       try { data = await res.json(); } catch { /* non-JSON body */ }
       if (!res.ok) {
@@ -80,7 +113,23 @@ export function AddMemberDialog({ open, dim, dimLabel, onClose, onSaved }: Props
               : `HTTP ${res.status}`);
         throw new Error(detail);
       }
-      toast.success(`✅ Created ${TITLE_FOR_DIM[dim]} ${common.memberCode}`);
+
+      // Add: optionally attach to a parent hierarchy edge
+      if (mode !== "edit" && parentMemberId && data?.data?.id) {
+        try {
+          await fetch(`/api/v2/hierarchy/${dim}`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parentMemberId, childMemberId: data.data.id,
+              operator: "ADD", weight: 1,
+            }),
+          });
+        } catch { /* edge creation failure shouldn't block member save */ }
+      }
+
+      const verb = mode === "edit" ? "Updated" : mode === "copy" ? "Duplicated" : "Created";
+      toast.success(`✅ ${verb} ${TITLE_FOR_DIM[dim]} ${common.memberCode}`);
       onSaved(data.data);
       setCommon({ memberCode: "", memberName: "", description: "", isActive: true, sortOrder: 0 });
       setProps(defaultPropsFor(dim));
@@ -94,7 +143,10 @@ export function AddMemberDialog({ open, dim, dimLabel, onClose, onSaved }: Props
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="text-lg font-semibold text-foreground">Add {dimLabel ?? TITLE_FOR_DIM[dim]}</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            {mode === "edit" ? "Edit" : mode === "copy" ? "Duplicate" : parentMemberId ? "Add child to" : "Add"} {dimLabel ?? TITLE_FOR_DIM[dim]}
+            {prefilling && <Loader2 className="inline ml-2 h-4 w-4 animate-spin text-muted-foreground" />}
+          </h2>
           <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted">
             <X className="h-4 w-4" />
           </button>
