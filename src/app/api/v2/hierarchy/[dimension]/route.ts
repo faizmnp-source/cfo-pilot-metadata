@@ -13,6 +13,7 @@ import { requireAuth } from "@/lib/api-helpers";
 import { apiError, apiResponse as apiSuccess } from "@/lib/utils";
 import { audit } from "@/lib/audit-v2";
 import { resolveDimKind } from "@/lib/dim-schemas";
+import { ensureDimension } from "@/lib/ensure-dimension";
 import { AggregationOperator } from "@prisma/client";
 
 const AddEdgeSchema = z.object({
@@ -78,10 +79,7 @@ export async function GET(
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 
-  const dimension = await prisma.dimension.findFirst({
-    where: { tenantId: auth.tid, kind },
-  });
-  if (!dimension) return apiError(`Dimension '${kind}' not configured for tenant`, 404);
+  const dimension = await ensureDimension(auth.tid, kind);
 
   const url = new URL(req.url);
   const hierarchyCode = url.searchParams.get("hierarchy") ?? "default";
@@ -156,10 +154,7 @@ export async function POST(
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 
-  const dimension = await prisma.dimension.findFirst({
-    where: { tenantId: auth.tid, kind },
-  });
-  if (!dimension) return apiError(`Dimension '${kind}' not configured for tenant`, 404);
+  const dimension = await ensureDimension(auth.tid, kind);
 
   let body: unknown;
   try { body = await req.json(); } catch { return apiError("Invalid JSON body", 400); }

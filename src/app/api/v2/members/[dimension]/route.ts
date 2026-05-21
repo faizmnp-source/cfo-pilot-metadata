@@ -14,6 +14,7 @@ import {
   CreateMemberInputByDim,
   resolveDimKind,
 } from "@/lib/dim-schemas";
+import { ensureDimension } from "@/lib/ensure-dimension";
 
 // ─── GET /api/v2/members/[dimension] ─────────────────────────────
 
@@ -29,10 +30,8 @@ export async function GET(
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 
   // Look up the dimension definition for this tenant (must exist + be enabled)
-  const dimension = await prisma.dimension.findFirst({
-    where: { tenantId: auth.tid, kind },
-  });
-  if (!dimension) return apiError(`Dimension '${kind}' not configured for tenant`, 404);
+  // Auto-provision the Dimension row on first access for this tenant.
+  const dimension = await ensureDimension(auth.tid, kind);
   if (!dimension.isEnabled) {
     return apiError(`Dimension '${kind}' is disabled. Enable in Settings → Features.`, 409);
   }
@@ -92,10 +91,8 @@ export async function POST(
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 
-  const dimension = await prisma.dimension.findFirst({
-    where: { tenantId: auth.tid, kind },
-  });
-  if (!dimension) return apiError(`Dimension '${kind}' not configured for tenant`, 404);
+  // Auto-provision the Dimension row on first access for this tenant.
+  const dimension = await ensureDimension(auth.tid, kind);
   if (!dimension.isEnabled) {
     return apiError(`Dimension '${kind}' is disabled. Enable in Settings → Features.`, 409);
   }
