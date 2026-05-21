@@ -9,6 +9,7 @@ import {
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
+import { HierarchyTreeView } from "@/components/metadata/HierarchyTreeView";
 import { AccountForm } from "@/components/metadata/AccountForm";
 import { cn } from "@/lib/utils";
 
@@ -546,20 +547,9 @@ export default function AccountsPage() {
           </div>
         )}
 
-        {/* Tree view */}
+        {/* Tree view — OneStream/EPM-style expandable, fed by /api/v2/hierarchy */}
         {tab === "tree" && (
-          <MetadataTree
-            nodes={treeData}
-            onEdit={(node) => {
-              const account = accounts.find((a) => a.id === node.id);
-              if (account) { setEditRecord(account); setFormOpen(true); }
-            }}
-            onDelete={(node) => {
-              const account = accounts.find((a) => a.id === node.id);
-              if (account) handleDelete(account);
-            }}
-            onAdd={() => { setEditRecord(null); setFormOpen(true); }}
-          />
+          <HierarchyTreeView dimensionSlug="account" hierarchyCode="default" />
         )}
       </main>
 
