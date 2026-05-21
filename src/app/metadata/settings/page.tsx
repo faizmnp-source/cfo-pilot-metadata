@@ -98,10 +98,19 @@ export default function AppSettingsPage() {
       });
   }, []);
 
+  const [flagsOfflineMode, setFlagsOfflineMode] = useState(false);
+
   const saveFlag = async (key: keyof FeatureFlags, value: boolean) => {
-    const previous = flags[key];
-    setFlags((f) => ({ ...f, [key]: value }));   // optimistic
+    setFlags((f) => ({ ...f, [key]: value }));   // optimistic, never rollback
     setFlagSaving(key);
+
+    // Always persist to localStorage so the toggle is sticky in the UI
+    // regardless of API status. Lets the UI work before DB migration.
+    try {
+      const next = { ...flags, [key]: value };
+      window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify(next));
+    } catch { /* ignore */ }
+
     try {
       const res = await fetch("/api/v2/tenant-features", {
         method: "PUT",
@@ -110,10 +119,11 @@ export default function AppSettingsPage() {
         body: JSON.stringify({ featureKey: key, isEnabled: value }),
       });
       if (!res.ok) throw new Error("save failed");
-      // Keep localStorage in sync for legacy code paths still reading it
-      try { window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify({ ...flags, [key]: value })); } catch { /* ignore */ }
+      setFlagsOfflineMode(false);
     } catch {
-      setFlags((f) => ({ ...f, [key]: previous }));   // rollback
+      // API not ready (DB likely missing tenant_features table) — keep the
+      // optimistic value, mark "offline" so user sees the explanation.
+      setFlagsOfflineMode(true);
     } finally {
       setFlagSaving(null);
     }
@@ -465,9 +475,17 @@ export default function AppSettingsPage() {
               </label>
             ))}
           </div>
-          <p className="text-xs text-amber-700 mt-4">
-            ⚠️ Toggles save to browser only for now. Persisting to the <code>tenant_features</code> table is task #12.
-          </p>
+          {flagsOfflineMode ? (
+            <p className="text-xs text-amber-700 mt-4">
+              ⚠️ Toggles saved to browser only — the <code>tenant_features</code> DB table isn&apos;t ready yet.
+              Run <code>npx prisma migrate dev --name v2_tenant_features</code> to enable cross-device persistence.
+              Your changes are still visible immediately.
+            </p>
+          ) : (
+            <p className="text-xs text-emerald-700 mt-4">
+              ✅ Toggles save to the <code>tenant_features</code> table. Audit row written for every change.
+            </p>
+          )}
         </div>
       </section>
 
