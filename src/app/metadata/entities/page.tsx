@@ -10,6 +10,7 @@ import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
 import { EntityForm } from "@/components/metadata/EntityForm";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 type ConsolidationMethod = "FULL" | "PROPORTIONAL" | "EQUITY" | "NONE";
