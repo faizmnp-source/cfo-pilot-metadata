@@ -353,6 +353,8 @@ enum AuditAction {
   DISABLE_FEATURE
   APPROVE
   REJECT
+  LOGIN
+  LOGOUT
 }
 
 model AuditLog {
