@@ -4,12 +4,18 @@
 // magic strings" at the API boundary.
 
 import { z } from "zod";
+// AccountType, TimeBalance, VarianceType, CurrencyBehavior, ConsolidationMethod,
+// ScenarioType, TimePeriodType are TS-level enums (Prisma strips them because
+// they're not on a column — see dim-enums.ts for the why).
+// StorageType, CalculationType, AggregationOperator, DimensionKind ARE column-
+// typed in the schema, so they're safe to use from @prisma/client (re-exported
+// through dim-enums.ts for one consistent import path).
 import {
   AccountType, TimeBalance, StorageType, AggregationOperator,
   CalculationType, VarianceType, CurrencyBehavior,
   ConsolidationMethod, ScenarioType, TimePeriodType,
   DimensionKind,
-} from "@prisma/client";
+} from "./dim-enums";
 
 // ─── Account ─────────────────────────────────────────────────────
 
