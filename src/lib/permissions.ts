@@ -13,7 +13,8 @@ export type Resource =
   | "dimension"
   | "importJob"
   | "auditLog"
-  | "user";
+  | "user"
+  | "settings";
 
 type PermMatrix = Record<Role, Record<Action, boolean>>;
 
@@ -95,6 +96,12 @@ const PERMISSIONS: Record<Resource, PermMatrix> = {
     FINANCE_MANAGER: { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
     FINANCE_USER:    { create:false, read:false, update:false, delete:false, import:false, export:false, bulkUpdate:false },
     VIEWER:          { create:false, read:false, update:false, delete:false, import:false, export:false, bulkUpdate:false },
+  },
+  settings: {
+    ADMIN:           { create:true,  read:true,  update:true,  delete:false, import:false, export:false, bulkUpdate:false },
+    FINANCE_MANAGER: { create:false, read:true,  update:true,  delete:false, import:false, export:false, bulkUpdate:false },
+    FINANCE_USER:    { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
+    VIEWER:          { create:false, read:true,  update:false, delete:false, import:false, export:false, bulkUpdate:false },
   },
 };
 

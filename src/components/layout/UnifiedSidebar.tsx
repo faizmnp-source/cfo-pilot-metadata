@@ -35,10 +35,12 @@ const META_NAV_CORE = [
 ];
 
 const META_NAV_BOTTOM = [
-  { href: "/metadata/import",      label: "Import Wizard",     icon: Upload },
-  { href: "/metadata/validation",  label: "Validation",        icon: ShieldCheck },
-  { href: "/metadata/audit-logs",  label: "Audit Logs",        icon: History },
+  { href: "/metadata/fx-rates",    label: "FX Rates",             icon: TrendingUp },
+  { href: "/metadata/import",      label: "Import Wizard",        icon: Upload },
+  { href: "/metadata/validation",  label: "Validation",           icon: ShieldCheck },
+  { href: "/metadata/audit-logs",  label: "Audit Logs",           icon: History },
   { href: "/metadata/dimensions",  label: "Configure Dimensions", icon: Settings2 },
+  { href: "/metadata/settings",    label: "App Settings",         icon: Settings },
 ];
 
 interface UnifiedSidebarProps {

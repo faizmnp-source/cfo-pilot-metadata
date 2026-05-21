@@ -93,6 +93,7 @@ model Tenant {
   departments      Department[]
   costCenters      CostCenter[]
   currencies       Currency[]
+  fxRates          FxRate[]
   scenarios        Scenario[]
   timePoints       TimePoint[]
   auditLogs        AuditLog[]
@@ -101,6 +102,7 @@ model Tenant {
   projects         Project[]
   dimensionDefs    DimensionDefinition[]
   dimensionMembers DimensionMember[]
+  tenantSettings   TenantSettings?
 
   @@index([slug])
   @@map("tenants")
@@ -505,4 +507,47 @@ model DimensionMember {
   @@index([tenantId, dimensionId])
   @@index([tenantId, dimensionId, parentId])
   @@map("dimension_members")
+}
+
+// ─── FX Rates ─────────────────────────────────────────────────
+model FxRate {
+  id            String   @id @default(uuid())
+  tenantId      String
+  fromCurrency  String   // e.g. "USD"
+  toCurrency    String   // e.g. "INR"
+  rate          Decimal  @db.Decimal(18, 6)
+  effectiveDate DateTime @db.Date
+  source        String   @default("MANUAL")  // MANUAL, MARKET, IMPORTED
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fromCurrency, toCurrency, effectiveDate])
+  @@index([tenantId])
+  @@index([tenantId, fromCurrency, toCurrency])
+  @@index([tenantId, effectiveDate(sort: Desc)])
+  @@map("fx_rates")
+}
+
+// ─── Tenant App Settings ──────────────────────────────────────
+model TenantSettings {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique
+  appName           String   @default("CFO Pilot")
+  reportingCurrency String   @default("USD")
+  fiscalYearStart   Int      @default(1)   // month 1-12
+  dateFormat        String   @default("YYYY-MM-DD")
+  numberFormat      String   @default("1,234.56")
+  timezone          String   @default("UTC")
+  logoUrl           String?
+  primaryColor      String   @default("#6366f1")
+  isSetupComplete   Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
 }
