@@ -222,13 +222,24 @@ async function main() {
   }
   console.log("✅ feature flags set (multi_entity=true, intercompany=false, multi_currency=false)");
 
-  // 4) Dimensions
+  // 4) Dimensions (5 always-on + 2 configured user dims for a CA firm)
   const dimAccount  = await upsertDim("ACCOUNT",  "account",  "Account");
   const dimEntity   = await upsertDim("ENTITY",   "entity",   "Entity");
   const dimScenario = await upsertDim("SCENARIO", "scenario", "Scenario");
   const dimTime     = await upsertDim("TIME",     "time",     "Time Period");
   const dimCurrency = await upsertDim("CURRENCY", "currency", "Currency");
-  console.log("✅ 5 always-on dimensions created");
+  // User-defined dims — renamed for the CA firm context
+  const dimUd1      = await prisma.dimension.upsert({
+    where: { tenantId_kind: { tenantId: TENANT_ID, kind: "UD1" } },
+    update: { code: "service_line", label: "Service Line", isCustom: true, isEnabled: true },
+    create: { tenantId: TENANT_ID, kind: "UD1", code: "service_line", label: "Service Line", isCustom: true, isEnabled: true },
+  });
+  const dimUd2      = await prisma.dimension.upsert({
+    where: { tenantId_kind: { tenantId: TENANT_ID, kind: "UD2" } },
+    update: { code: "client_type",  label: "Client Type",  isCustom: true, isEnabled: true },
+    create: { tenantId: TENANT_ID, kind: "UD2", code: "client_type",  label: "Client Type",  isCustom: true, isEnabled: true },
+  });
+  console.log("✅ 5 always-on dimensions + 2 user dims (Service Line, Client Type)");
 
   // Hierarchies
   const hAccount  = await getOrCreateHierarchy(dimAccount.id);
@@ -289,6 +300,33 @@ async function main() {
     }
   }
   console.log(`✅ ${timeCount} time members + ${edgeCount} edges (FY24-FY26, Apr-Mar)`);
+
+  // 8b) Sample members for the configured user dims
+  const hUd1 = await getOrCreateHierarchy(dimUd1.id);
+  const hUd2 = await getOrCreateHierarchy(dimUd2.id);
+
+  const SERVICE_LINES = [
+    { code: "SL-AUDIT",    name: "Audit",       parent: null },
+    { code: "SL-TAX",      name: "Tax",         parent: null },
+    { code: "SL-COMPLY",   name: "Compliance",  parent: null },
+    { code: "SL-ADVISORY", name: "Advisory",    parent: null },
+  ];
+  const slByCode = {};
+  for (const s of SERVICE_LINES) {
+    slByCode[s.code] = await upsertMember(dimUd1.id, s.code, s.name, { category: "service_line" });
+  }
+  console.log(`✅ ${SERVICE_LINES.length} service lines`);
+
+  const CLIENT_TYPES = [
+    { code: "CT-CORP",       name: "Corporate"          },
+    { code: "CT-SME",        name: "SME"                },
+    { code: "CT-INDIVIDUAL", name: "Individual"         },
+    { code: "CT-NPO",        name: "Non-Profit / Trust" },
+  ];
+  for (const c of CLIENT_TYPES) {
+    await upsertMember(dimUd2.id, c.code, c.name, { category: "client_type" });
+  }
+  console.log(`✅ ${CLIENT_TYPES.length} client types`);
 
   // 9) Accounts (with hierarchy)
   const accByCode = {};

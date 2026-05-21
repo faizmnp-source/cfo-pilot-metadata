@@ -28,16 +28,11 @@ const CFO_NAV = [
 //   customer-defined:  UD1–UD8
 // Only the always-on 5 + tools render by default. Optional items appear when
 // their feature flag is on, configured in Settings → Features.
+// Per-dim deep-link nav was removed — dims are picked via the dropdown on
+// /metadata/library (OneStream/EPBCS pattern). Keep just Overview + Library.
 const META_NAV_CORE = [
-  { href: "/metadata",             label: "Overview",         icon: Layers },
-  { href: "/metadata/library",     label: "Dimension Library", icon: BookOpen },  // ← primary, OneStream-style unified page
-  // Per-dim deep links (still bookmarkable, less prominent)
-  { href: "/metadata/accounts",    label: "Accounts",     icon: BookOpen },
-  { href: "/metadata/entities",    label: "Entities",     icon: Building2 },
-  { href: "/metadata/icp",         label: "ICP",          icon: Link2 },
-  { href: "/metadata/scenarios",   label: "Scenarios",    icon: PieChart },
-  { href: "/metadata/time",        label: "Time Periods", icon: Clock },
-  { href: "/metadata/currencies",  label: "Currencies",   icon: Globe },
+  { href: "/metadata",         label: "Overview",          icon: Layers },
+  { href: "/metadata/library", label: "Dimension Library", icon: BookOpen },
 ];
 
 const META_NAV_BOTTOM = [
@@ -57,6 +52,7 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [userDims, setUserDims] = useState<{ id: string; slot: string; name: string }[]>([]);
+  const [tenantName, setTenantName] = useState<string>("");
 
   useEffect(() => {
     fetch("/api/metadata/dimensions")
@@ -64,6 +60,21 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
       .then((data) => {
         const dims = Array.isArray(data) ? data : (data.data ?? []);
         setUserDims(dims.filter((d: any) => d.isActive && d.name));
+      })
+      .catch(() => {});
+
+    // Resolve the active tenant's display name so users can tell which
+    // tenant they're in (helpful when one operator manages several).
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        const name = d?.data?.tenant?.name ?? d?.data?.tenantName ?? d?.tenant?.name;
+        if (name) setTenantName(name);
+        else if (d?.data?.tenantId) {
+          // Fallback — fetch tenant by id if /me didn't include the name
+          fetch(`/api/v2/tenant-features`, { credentials: "include" })
+            .catch(() => null); // keep it best-effort
+        }
       })
       .catch(() => {});
   }, []);
@@ -83,9 +94,16 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
             <Navigation className="w-4 h-4 text-white" strokeWidth={1.5} />
           </div>
           {!collapsed && (
-            <div className="flex items-baseline gap-1 min-w-0">
-              <span className="font-semibold text-sm text-[var(--text-primary)] tracking-tight">CFO</span>
-              <span className="font-light text-sm text-[var(--text-secondary)] tracking-tight">Pilot</span>
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-1">
+                <span className="font-semibold text-sm text-[var(--text-primary)] tracking-tight">CFO</span>
+                <span className="font-light text-sm text-[var(--text-secondary)] tracking-tight">Pilot</span>
+              </div>
+              {tenantName && (
+                <div className="truncate text-[10px] text-[var(--text-tertiary)] -mt-0.5" title={tenantName}>
+                  {tenantName}
+                </div>
+              )}
             </div>
           )}
         </div>
