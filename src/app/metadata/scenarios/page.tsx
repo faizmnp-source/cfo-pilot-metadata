@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Lock, Unlock, X } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 interface Scenario {
@@ -110,6 +111,7 @@ export default function ScenariosPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<Scenario | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -229,7 +231,7 @@ export default function ScenariosPage() {
       <MetadataHeader
         title="Scenarios"
         subtitle={`${total.toLocaleString()} scenarios`}
-        onAdd={openAdd}
+        onAdd={() => setV2DialogOpen(true)}
         addLabel="Add Scenario"
         onExport={handleExport}
         onRefresh={fetchScenarios}
@@ -411,6 +413,14 @@ export default function ScenariosPage() {
           </div>
         </div>
       )}
+
+      {/* v2 Add Scenario dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="scenario"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchScenarios()}
+      />
     </>
   );
 }

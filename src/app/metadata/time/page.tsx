@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { LayoutList, GitBranch, X } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 interface TimePoint {
@@ -145,6 +146,7 @@ export default function TimePage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<TimePoint | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -306,7 +308,7 @@ export default function TimePage() {
       <MetadataHeader
         title="Time Periods"
         subtitle={`${total.toLocaleString()} periods`}
-        onAdd={openAdd}
+        onAdd={() => setV2DialogOpen(true)}
         addLabel="Add Period"
         onExport={handleExport}
         onRefresh={fetchTimePoints}
@@ -609,6 +611,14 @@ export default function TimePage() {
           </div>
         </div>
       )}
+
+      {/* v2 Add Time Period dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="time"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchTimePoints()}
+      />
     </>
   );
 }

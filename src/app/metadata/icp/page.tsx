@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 interface ICP {
@@ -29,6 +30,7 @@ export default function ICPPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<ICP | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -137,9 +139,16 @@ export default function ICPPage() {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search ICP code or name..."
-        onAdd={openAdd}
+        onAdd={() => setV2DialogOpen(true)}
         addLabel="Add ICP"
         onRefresh={fetchICPs}
+      />
+
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="icp"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchICPs()}
       />
 
       <main className="flex-1 overflow-y-auto bg-[var(--bg-surface-sunken)] p-6">

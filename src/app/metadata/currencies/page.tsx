@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { X } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 interface Currency {
@@ -107,6 +108,7 @@ export default function CurrenciesPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<Currency | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -252,7 +254,7 @@ export default function CurrenciesPage() {
       <MetadataHeader
         title="Currencies"
         subtitle={`${total.toLocaleString()} currencies`}
-        onAdd={openAdd}
+        onAdd={() => setV2DialogOpen(true)}
         addLabel="Add Currency"
         onExport={handleExport}
         onRefresh={fetchCurrencies}
@@ -418,6 +420,14 @@ export default function CurrenciesPage() {
           </div>
         </div>
       )}
+
+      {/* v2 Add Currency dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="currency"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchCurrencies()}
+      />
     </>
   );
 }
