@@ -11,6 +11,7 @@ import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
 import { EntityForm } from "@/components/metadata/EntityForm";
 import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
+import { HierarchyTreeView as V2Tree } from "@/components/metadata/v2/HierarchyTreeView";
 import { cn } from "@/lib/utils";
 
 type ConsolidationMethod = "FULL" | "PROPORTIONAL" | "EQUITY" | "NONE";

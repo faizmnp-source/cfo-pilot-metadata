@@ -29,7 +29,9 @@ const CFO_NAV = [
 // Only the always-on 5 + tools render by default. Optional items appear when
 // their feature flag is on, configured in Settings → Features.
 const META_NAV_CORE = [
-  { href: "/metadata",             label: "Overview",     icon: Layers },
+  { href: "/metadata",             label: "Overview",         icon: Layers },
+  { href: "/metadata/library",     label: "Dimension Library", icon: BookOpen },  // ← primary, OneStream-style unified page
+  // Per-dim deep links (still bookmarkable, less prominent)
   { href: "/metadata/accounts",    label: "Accounts",     icon: BookOpen },
   { href: "/metadata/entities",    label: "Entities",     icon: Building2 },
   { href: "/metadata/icp",         label: "ICP",          icon: Link2 },
