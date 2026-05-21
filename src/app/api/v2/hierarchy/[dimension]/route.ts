@@ -92,13 +92,17 @@ export async function GET(
     return apiSuccess({ hierarchy: null, edges: [], tree: [] });
   }
 
-  const edges = await prisma.hierarchyEdge.findMany({
+  // Pull all edges then filter out any where parent or child is soft-deleted
+  // (isActive=false). EPM convention: deleted members are hidden from the
+  // hierarchy view by default. Their data and audit trail still survive.
+  const rawEdges = await prisma.hierarchyEdge.findMany({
     where: { tenantId: auth.tid, hierarchyId: hierarchy.id },
     include: {
-      parent: { select: { id: true, memberCode: true, memberName: true } },
-      child:  { select: { id: true, memberCode: true, memberName: true } },
+      parent: { select: { id: true, memberCode: true, memberName: true, isActive: true } },
+      child:  { select: { id: true, memberCode: true, memberName: true, isActive: true } },
     },
   });
+  const edges = rawEdges.filter((e) => e.parent.isActive && e.child.isActive);
 
   if (format === "edges") {
     return apiSuccess({ hierarchy, edges });
