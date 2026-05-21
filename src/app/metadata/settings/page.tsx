@@ -77,21 +77,65 @@ export default function AppSettingsPage() {
   const [periodNumYears, setPeriodNumYears] = useState<number>(3);
   const [periodPreview, setPeriodPreview] = useState<TimePeriodNode[] | null>(null);
 
-  // Feature flags (localStorage-backed v1)
+  // Feature flags — now backed by /api/v2/tenant-features (was localStorage)
   const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FLAGS);
+  const [flagSaving, setFlagSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_feature_flags") : null;
-      if (raw) setFlags({ ...DEFAULT_FLAGS, ...JSON.parse(raw) });
-    } catch { /* ignore */ }
+    fetch("/api/v2/tenant-features", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && d.data?.flags) {
+          setFlags({ ...DEFAULT_FLAGS, ...d.data.flags });
+        }
+      })
+      .catch(() => {
+        // Fallback: read legacy localStorage if API not reachable
+        try {
+          const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_feature_flags") : null;
+          if (raw) setFlags({ ...DEFAULT_FLAGS, ...JSON.parse(raw) });
+        } catch { /* ignore */ }
+      });
   }, []);
 
-  const saveFlag = (key: keyof FeatureFlags, value: boolean) => {
-    const next = { ...flags, [key]: value };
-    setFlags(next);
-    try { window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify(next)); } catch { /* ignore */ }
+  const saveFlag = async (key: keyof FeatureFlags, value: boolean) => {
+    const previous = flags[key];
+    setFlags((f) => ({ ...f, [key]: value }));   // optimistic
+    setFlagSaving(key);
+    try {
+      const res = await fetch("/api/v2/tenant-features", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featureKey: key, isEnabled: value }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      // Keep localStorage in sync for legacy code paths still reading it
+      try { window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify({ ...flags, [key]: value })); } catch { /* ignore */ }
+    } catch {
+      setFlags((f) => ({ ...f, [key]: previous }));   // rollback
+    } finally {
+      setFlagSaving(null);
+    }
   };
+
+  // User role (for Settings lock — only ADMIN can unlock)
+  const [userRole, setUserRole] = useState<string>("VIEWER");
+  const [editingUnlocked, setEditingUnlocked] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        const role = d?.user?.role ?? d?.data?.role ?? d?.role;
+        if (role) setUserRole(role);
+      })
+      .catch(() => { /* default to VIEWER */ });
+  }, []);
+
+  // Settings are locked once first save completes, unless an admin unlocks.
+  const isLocked = settings.isSetupComplete && !editingUnlocked;
+  const canUnlock = userRole === "ADMIN";
 
   const handleGeneratePeriods = () => {
     const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
@@ -186,9 +230,41 @@ export default function AppSettingsPage() {
         </div>
       )}
 
+      {isLocked && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-800">Setup is locked.</p>
+            <p className="text-sm text-gray-600 mt-1">
+              These settings shape your whole data model. They were saved {settings.isSetupComplete ? "earlier" : "just now"} and are read-only.
+              {canUnlock
+                ? " As an admin you can unlock for editing — any change will be audited."
+                : " Ask an admin to unlock if a change is needed."}
+            </p>
+          </div>
+          {canUnlock && (
+            <button
+              onClick={() => setEditingUnlocked(true)}
+              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg bg-white hover:bg-gray-100"
+            >
+              🔓 Unlock for editing
+            </button>
+          )}
+        </div>
+      )}
+      {editingUnlocked && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-800">
+          ⚠️ Editing unlocked. Saving will overwrite the locked configuration and write an audit row.
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
       )}
+
+      {/* Lock wrapper: when locked, every form control inside is disabled
+          via native fieldset semantics. */}
+      <fieldset disabled={isLocked} className={isLocked ? "space-y-8 opacity-70 pointer-events-none" : "space-y-8 contents"}>
 
       {/* App Identity */}
       <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -435,6 +511,8 @@ export default function AppSettingsPage() {
         </div>
       </section>
 
+      </fieldset>
+
       {/* Save */}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">
@@ -442,7 +520,7 @@ export default function AppSettingsPage() {
         </p>
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || isLocked}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
           {saved ? (
