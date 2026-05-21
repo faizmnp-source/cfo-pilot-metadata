@@ -362,7 +362,7 @@ model AuditLog {
   tenantId   String
   userId     String?
   action     AuditAction
-  entityType String                      // 'dimension_member', 'hierarchy_edge', 'tenant_feature'
+  entityType String @default("legacy")   // 'dimension_member', 'hierarchy_edge', 'tenant_feature' — default lets push backfill old rows
   entityId   String?
   before     Json?
   after      Json?
