@@ -348,7 +348,12 @@ function TreeRow(p: RowProps) {
           isSelected ? "bg-primary/10" : "hover:bg-muted/60",
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+        onClick={(e) => {
+          // Don't steal clicks meant for the chevron / action buttons
+          if ((e.target as HTMLElement).closest("button")) return;
+          e.stopPropagation();
+          onSelect(node.id);
+        }}
         onContextMenu={(e) => onContextMenu(e, node)}
       >
         <button
