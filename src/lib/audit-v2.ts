@@ -21,16 +21,30 @@ export interface AuditV2Params {
 
 export async function audit(p: AuditV2Params): Promise<void> {
   try {
+    // userId FKs to users.id; if the JWT carries an id that doesn't exist
+    // in the DB (e.g. demo sessions with sub="demo-1"), the insert would
+    // FK-violate and the catch below would swallow it silently — leaving
+    // audit_logs empty. Pre-check and null-out the userId in that case so
+    // the audit row still persists, just unattributed.
+    let resolvedUserId = p.userId ?? null;
+    if (resolvedUserId) {
+      const userExists = await prisma.user.findUnique({
+        where: { id: resolvedUserId },
+        select: { id: true },
+      });
+      if (!userExists) resolvedUserId = null;
+    }
+
     await prisma.auditLog.create({
       data: {
         tenantId:   p.tenantId,
-        userId:     p.userId ?? null,
+        userId:     resolvedUserId,
         action:     p.action,
         entityType: p.entityType,
         entityId:   p.entityId ?? null,
         before:     p.before === undefined ? undefined : (p.before as any),
         after:      p.after  === undefined ? undefined : (p.after  as any),
-        metadata:   p.metadata === undefined ? undefined : (p.metadata as any),
+        metadata:   { ...(p.metadata ?? {}), ...(resolvedUserId === null && p.userId ? { unresolved_user_id: p.userId } : {}) } as any,
         ipAddress:  p.ipAddress ?? null,
         userAgent:  p.userAgent ?? null,
       },
