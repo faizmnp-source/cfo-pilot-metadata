@@ -30,5 +30,6 @@ export default defineConfig({
     { name: "coverage-full", testMatch: /coverage\.spec\.ts$/ },
     { name: "coverage-v2",   testMatch: /coverage2\.spec\.ts$/ },
     { name: "library-ui",    testMatch: /library-ui\.spec\.ts$/ },
+    { name: "all-remaining", testMatch: /all-remaining\.spec\.ts$/ },
   ],
 });
