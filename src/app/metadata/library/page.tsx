@@ -23,7 +23,8 @@ const CORE_DIMS: DimOption[] = [
   { slug: "scenario", label: "Scenario",           description: "Actual, Budget, Forecast, What-If — version-controlled" },
   { slug: "time",     label: "Time Period",        description: "Fiscal years, quarters, months — handles non-Jan fiscal years" },
   { slug: "currency", label: "Currency",           description: "ISO 4217 prefilled, base currency per tenant" },
-  { slug: "icp",      label: "Intercompany Partner", description: "ICP counterparties — only enabled when intercompany is on" },
+  { slug: "icp",      label: "Intercompany Partner", description: "ICP counterparties — auto-derived from Entity.icp_enabled" },
+  { slug: "origin",   label: "Origin",             description: "Data source tag — Import / Form / AI / Calc. Every fact row carries one." },
 ];
 
 export default function DimensionLibraryPage() {

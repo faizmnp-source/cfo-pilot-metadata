@@ -16,6 +16,7 @@ import {
 } from "@/lib/dim-schemas";
 import { ensureDimension } from "@/lib/ensure-dimension";
 import { syncIcpFromEntity } from "@/lib/sync-icp";
+import { ensureImportOriginMember } from "@/lib/seed-origin";
 
 // ─── GET /api/v2/members/[dimension] ─────────────────────────────
 
@@ -35,6 +36,14 @@ export async function GET(
   const dimension = await ensureDimension(auth.tid, kind);
   if (!dimension.isEnabled) {
     return apiError(`Dimension '${kind}' is disabled. Enable in Settings → Features.`, 409);
+  }
+
+  // Seed the always-present Import member on first Origin GET. Idempotent,
+  // cheap — single findFirst when the seed already exists.
+  if (kind === "ORIGIN") {
+    try { await ensureImportOriginMember(auth.tid, auth.sub); } catch (e) {
+      console.error("[seed-origin] ensureImportOriginMember failed:", e);
+    }
   }
 
   const url = new URL(req.url);

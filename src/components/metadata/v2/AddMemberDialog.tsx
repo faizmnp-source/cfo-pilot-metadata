@@ -17,7 +17,7 @@ import {
 import { ISO_4217, ISO_TOP } from "@/lib/iso4217";
 
 export type SupportedDim =
-  | "account" | "entity" | "scenario" | "time" | "currency" | "icp"
+  | "account" | "entity" | "scenario" | "time" | "currency" | "icp" | "origin"
   | "ud1" | "ud2" | "ud3" | "ud4" | "ud5" | "ud6" | "ud7" | "ud8";
 
 interface Props {
@@ -34,7 +34,7 @@ interface Props {
 
 const TITLE_FOR_DIM: Record<SupportedDim, string> = {
   account: "Account", entity: "Entity", scenario: "Scenario", time: "Time Period",
-  currency: "Currency", icp: "Intercompany Partner",
+  currency: "Currency", icp: "Intercompany Partner", origin: "Origin",
   ud1: "Member (UD1)", ud2: "Member (UD2)", ud3: "Member (UD3)", ud4: "Member (UD4)",
   ud5: "Member (UD5)", ud6: "Member (UD6)", ud7: "Member (UD7)", ud8: "Member (UD8)",
 };
@@ -227,6 +227,8 @@ function defaultPropsFor(dim: SupportedDim): Record<string, any> {
       return { iso_code: "USD", is_base: false };
     case "icp":
       return { entity_id: "" };
+    case "origin":
+      return { origin_type: "FORM", description: "" };
     default:  // ud1..ud8
       return {};
   }
@@ -384,6 +386,22 @@ function PropertyFields({
         <Field label="Linked Entity Member ID" required>
           <input value={props.entity_id} onChange={(e) => setP("entity_id", e.target.value)} placeholder="UUID of an Entity member" className={cn(inputCls, "font-mono text-xs")} />
         </Field>
+      );
+
+    case "origin":
+      return (
+        <>
+          <Field label="Origin Type" required>
+            <select value={props.origin_type} onChange={(e) => setP("origin_type", e.target.value)} className={inputCls}>
+              {["IMPORT","FORM","AI","CALC","ELIM","CONSOL","TRANSLATION","ALLOC","JOURNAL"].map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Description (optional)">
+            <input value={props.description ?? ""} onChange={(e) => setP("description", e.target.value)} placeholder="e.g. Loaded from Tally TB export" className={inputCls} />
+          </Field>
+        </>
       );
 
     default:  // UD1..UD8
