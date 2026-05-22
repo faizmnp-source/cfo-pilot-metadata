@@ -100,7 +100,7 @@ export default function MetadataDashboard() {
       <main className="flex-1 overflow-y-auto bg-background p-6 space-y-8">
 
         {/* Alert banner if validation errors */}
-        {stats && stats.validationErrors > 0 && (
+        {stats && (stats.validationErrors ?? 0) > 0 && (
           <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <p className="text-sm text-red-700">
