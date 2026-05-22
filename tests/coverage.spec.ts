@@ -92,8 +92,6 @@ test.describe("@perm Role-based permissions", () => {
 // AUTH browser flows (AUTH-009, AUTH-010)
 // ─────────────────────────────────────────────────────────────────────────
 test.describe("@auth Browser-driven auth flows", () => {
-  test.use({ browserName: "chromium" });
-
   test("[AUTH-009] expired API call bounces to /login?expired=1&next=…", async ({ page, context }) => {
     // 1. Login normally
     await page.goto("/login");
@@ -134,8 +132,6 @@ test.describe("@auth Browser-driven auth flows", () => {
 // LIBRARY UI (LIB-002, LIB-003, LIB-004, LIB-010, LIB-011)
 // ─────────────────────────────────────────────────────────────────────────
 test.describe("@lib Library page UI", () => {
-  test.use({ browserName: "chromium" });
-
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
     await page.fill('input[type="email"]', DEMO.admin.email);
