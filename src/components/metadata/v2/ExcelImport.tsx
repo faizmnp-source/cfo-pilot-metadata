@@ -123,7 +123,13 @@ export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onI
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        let data: any = {}; try { data = await res.json(); } catch {}
+        // Capture both the raw body and the parsed JSON. Empty body on 5xx
+        // is a backend crash before the response was written — surface that
+        // explicitly instead of leaving the user staring at "HTTP 500".
+        const rawText = await res.text();
+        let data: any = {};
+        try { data = rawText ? JSON.parse(rawText) : {}; } catch { /* leave data={} */ }
+        const emptyBody = rawText.length === 0;
 
         if (res.status === 201 || res.status === 200) {
           codeToId[String(r.values.code)] = data?.data?.id;
@@ -143,9 +149,19 @@ export function ExcelImport({ open, dim, hierarchyCode = "default", onClose, onI
         } else if (res.status === 401) {
           rowResults.push({ row: r.rowIndex, status: "failed", detail: "Not signed in — log out and back in on this URL" });
         } else if (res.status === 422) {
-          const issue = data?.details?.issues?.[0];
+          // Surface every validation issue, not just the first — Zod reports
+          // them all at once and partial information is misleading.
+          const issues: Array<{ path?: string[]; message?: string }> = data?.details?.issues ?? [];
+          const formatted = issues.length
+            ? issues.map((i) => `${i.path?.join(".") ?? ""} ${i.message ?? "invalid"}`.trim()).join(" • ")
+            : "validation failed";
+          rowResults.push({ row: r.rowIndex, status: "failed", detail: `Validation: ${formatted}` });
+        } else if (res.status >= 500 && emptyBody) {
+          // The function crashed before NextResponse.json() — most likely a
+          // FK violation, Prisma drift, or import-time error. Tell the user
+          // honestly that the server died, not just "HTTP 500".
           rowResults.push({ row: r.rowIndex, status: "failed",
-            detail: `Validation: ${issue?.path?.join(".") ?? ""} ${issue?.message ?? "invalid"}`.trim() });
+            detail: `Server error (HTTP ${res.status}, no response body — check Vercel logs)` });
         } else {
           rowResults.push({ row: r.rowIndex, status: "failed",
             detail: data?.error
