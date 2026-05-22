@@ -65,3 +65,46 @@ export async function ensureTenant(tenantId: string): Promise<void> {
     },
   });
 }
+
+/**
+ * Idempotent User upsert. Demo logins mint a JWT with sub="demo-1" etc but
+ * never seed the User row, so every audit() call FK-violated on userId and
+ * the exception was swallowed inside the route's try/catch (audit trail
+ * silently empty — caught by QA case AUD-001).
+ *
+ * Called from /api/auth/login's demo-fallback branch so by the time any v2
+ * route runs `audit({ userId: auth.sub, ... })`, the User row already exists.
+ *
+ * passwordHash is a placeholder marker — demo users authenticate via the
+ * hard-coded DEMO_USERS list in the login route, not via bcrypt comparison
+ * against this column. If DATABASE_URL is configured AND a matching User
+ * row exists with a real hash, login takes the DB path first and never
+ * reaches the demo fallback.
+ */
+export async function ensureUser(args: {
+  id:       string;
+  tenantId: string;
+  email:    string;
+  name:     string;
+  role:     string;  // UserRole enum value; passed as string to avoid coupling here
+}): Promise<void> {
+  await ensureTenant(args.tenantId); // parent FK
+  await prisma.user.upsert({
+    where: { id: args.id },
+    update: {
+      // Refresh display fields if the demo seed list changed
+      email: args.email,
+      name:  args.name,
+      role:  args.role as any,
+    },
+    create: {
+      id:           args.id,
+      tenantId:     args.tenantId,
+      email:        args.email,
+      name:         args.name,
+      role:         args.role as any,
+      passwordHash: "$demo$placeholder$not-used-for-auth",
+      isActive:     true,
+    },
+  });
+}

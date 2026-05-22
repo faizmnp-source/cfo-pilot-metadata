@@ -5,6 +5,7 @@ import { signToken, setAuthCookie } from "@/lib/auth";
 import { LoginSchema } from "@/lib/validations";
 import { apiResponse, apiError } from "@/lib/utils";
 import { writeAuditLog } from "@/lib/audit";
+import { ensureUser } from "@/lib/ensure-dimension";
 
 // Demo users for when DATABASE_URL is not configured
 const DEMO_USERS = [
@@ -65,6 +66,23 @@ export async function POST(req: NextRequest) {
     // --- Demo fallback (no DB or user not in DB) ---
     const demo = DEMO_USERS.find((u) => u.email === email.toLowerCase());
     if (!demo || demo.password !== password) return apiError("Invalid email or password", 401);
+
+    // Persist a User row for the demo identity so audit-logs FK can resolve.
+    // Without this, every audit() call from v2 routes silently FK-violated on
+    // users.id (caught by QA case AUD-001) and audit_logs stayed empty.
+    // ensureUser also upserts the parent Tenant — safe to swallow errors
+    // when DATABASE_URL is absent (truly DB-less demo mode).
+    try {
+      await ensureUser({
+        id:       demo.id,
+        tenantId: demo.tenantId,
+        email:    demo.email,
+        name:     demo.name,
+        role:     demo.role,
+      });
+    } catch (e) {
+      console.warn("[Auth/Login] ensureUser swallowed (likely no DB):", e instanceof Error ? e.message : e);
+    }
 
     const token = await signToken({
       sub: demo.id, tid: demo.tenantId,
