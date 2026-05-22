@@ -29,6 +29,12 @@ export const AccountPropertiesSchema = z.object({
   currency_behavior:  z.nativeEnum(CurrencyBehavior).default(CurrencyBehavior.TRANSACTIONAL),
   allow_input:        z.boolean().default(true),
   is_consolidated:    z.boolean().default(true),
+  // is_icp: when true, fact-load validators reject rows where the ICP
+  // dimension is [None]. Standard EPM practice for intercompany AR/AP,
+  // intercompany revenue/expense, IC interest — every row must carry an
+  // ICP partner. Per EPM-architect's Q5 review: non-negotiable for
+  // elimination correctness.
+  is_icp:             z.boolean().default(false),
   formula:            z.string().nullable().optional(),
 }).strict();
 
