@@ -6,6 +6,7 @@
 // always-on dims + ICP get auto-created; UD1-UD8 are auto-created too but
 // flagged isCustom=true so the UI knows they're rename-able.
 
+import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import type { Dimension, DimensionKind } from "@prisma/client";
 
@@ -75,11 +76,12 @@ export async function ensureTenant(tenantId: string): Promise<void> {
  * Called from /api/auth/login's demo-fallback branch so by the time any v2
  * route runs `audit({ userId: auth.sub, ... })`, the User row already exists.
  *
- * passwordHash is a placeholder marker — demo users authenticate via the
- * hard-coded DEMO_USERS list in the login route, not via bcrypt comparison
- * against this column. If DATABASE_URL is configured AND a matching User
- * row exists with a real hash, login takes the DB path first and never
- * reaches the demo fallback.
+ * passwordHash MUST be a real bcrypt hash of the demo password — once the
+ * User row is persisted, the login route's DB-first branch will find it
+ * and bcrypt-compare on subsequent logins. Storing a placeholder bricks
+ * future logins (regression caught in QA's library-ui run: every non-admin
+ * demo login returned 401 because bcrypt-compare against the placeholder
+ * failed). Caller must pass the actual plaintext password so we can hash it.
  */
 export async function ensureUser(args: {
   id:       string;
@@ -87,15 +89,18 @@ export async function ensureUser(args: {
   email:    string;
   name:     string;
   role:     string;  // UserRole enum value; passed as string to avoid coupling here
+  password: string;  // plaintext; bcrypted before insert
 }): Promise<void> {
   await ensureTenant(args.tenantId); // parent FK
+  const passwordHash = await bcrypt.hash(args.password, 10);
   await prisma.user.upsert({
     where: { id: args.id },
     update: {
-      // Refresh display fields if the demo seed list changed
-      email: args.email,
-      name:  args.name,
-      role:  args.role as any,
+      // Refresh display fields + hash so legacy placeholder rows recover
+      email:        args.email,
+      name:         args.name,
+      role:         args.role as any,
+      passwordHash,
     },
     create: {
       id:           args.id,
@@ -103,7 +108,7 @@ export async function ensureUser(args: {
       email:        args.email,
       name:         args.name,
       role:         args.role as any,
-      passwordHash: "$demo$placeholder$not-used-for-auth",
+      passwordHash,
       isActive:     true,
     },
   });

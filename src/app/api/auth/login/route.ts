@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
         email:    demo.email,
         name:     demo.name,
         role:     demo.role,
+        password: demo.password,  // bcrypted inside ensureUser
       });
     } catch (e) {
       console.warn("[Auth/Login] ensureUser swallowed (likely no DB):", e instanceof Error ? e.message : e);
