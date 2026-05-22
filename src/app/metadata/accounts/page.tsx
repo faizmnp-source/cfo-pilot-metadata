@@ -307,7 +307,6 @@ export default function AccountsPage() {
     type: m.properties?.account_type ?? "EXPENSE",
     parentId: null,
     reportingGroup: m.properties?.reporting_group ?? null,
-    description: (m as any).description ?? null,
     aggregationType: m.properties?.aggregation_type ?? "SUM",
     flowType: m.properties?.time_balance ?? "BALANCE",
     signBehavior: m.properties?.switch_sign ? "REVERSED" : "NORMAL",

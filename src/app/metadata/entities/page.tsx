@@ -209,7 +209,7 @@ export default function EntitiesPage() {
           icpEnabled:          m.properties?.icp_enabled          ?? false,
           isActive: m.isActive,
           sortOrder: m.sortOrder ?? 0,
-        });
+        } as unknown as Entity);
         const mapped = (v2?.data?.data ?? []).map(mapV2Entity);
         setEntities(mapped);
         setTotal(v2?.data?.total ?? mapped.length);
