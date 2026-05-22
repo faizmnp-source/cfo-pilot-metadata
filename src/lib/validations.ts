@@ -46,7 +46,11 @@ export const CostCenterSchema = z.object({
 
 export const LoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  // Min 6 to allow demo passwords (user123 is 7 chars). DEMO_USERS list in
+  // the login route is the source of truth for canonical demo creds;
+  // production accounts created via signup should use a stronger client-side
+  // policy (min 12 + complexity) — this is server-side last-ditch validation.
+  password: z.string().min(6),
 });
 
 export const PaginationSchema = z.object({
