@@ -141,6 +141,7 @@ model Tenant {
   currencies      CurrencyRef[]     // per-tenant active list, seeded from CurrencyCatalog
   auditLogs       AuditLog[]
   factRows        FactRow[]
+  dataForms       DataForm[]
 
   @@index([slug])
   @@map("tenants")
@@ -437,6 +438,68 @@ model FactRow {
   @@index([tenantId, accountId, timeId])                       // account-history queries
   @@index([tenantId, postedAt])                                // recent-activity feed
   @@map("fact_rows")
+}
+
+// ─── Data Forms (admin-defined input/review forms) ────────────────
+
+// A form scopes the /data/input grid to a curated subset of accounts +
+// time periods + a specific layout. Without forms the page tries to show
+// every account on rows, which is unusable past ~30 accounts.
+//
+// Three layout types in V1:
+//   STANDARD       — Account on rows, Time on columns (single scenario in POV)
+//   VARIANCE       — Account on rows, Time × Scenario crossjoin on columns,
+//                    auto-generated Δ% per period from the two selected scenarios
+//   SCENARIO_STACK — Account on rows, Scenario on columns (single Time in POV)
+//
+// Member selection per axis is captured as JSON for forward-compat with
+// richer pickers (parent + descendants, by property filter, etc.).
+
+enum DataFormLayoutType {
+  STANDARD
+  VARIANCE
+  SCENARIO_STACK
+}
+
+model DataForm {
+  id          String             @id @default(uuid())
+  tenantId    String
+  code        String                                // url-friendly, e.g. 'pl_input'
+  name        String                                // display, e.g. 'P&L Input'
+  description String?
+  layoutType  DataFormLayoutType @default(STANDARD)
+
+  // Row axis (V1: always Account). selection JSON shape:
+  //   { kind: 'all_leaves' } |
+  //   { kind: 'children_of', parentMemberId: '<uuid>' } |
+  //   { kind: 'manual', memberIds: ['<uuid>', ...] }
+  rowDimKind     String  @default("ACCOUNT")
+  rowSelection   Json    @default("{\"kind\":\"all_leaves\"}")
+
+  // Column axis 1 (usually Time). Same selection shape.
+  colDimKind     String  @default("TIME")
+  colSelection   Json    @default("{\"kind\":\"all_leaves\"}")
+
+  // For VARIANCE / SCENARIO_STACK: which scenarios cross-join into cols.
+  // Stored as ordered array of scenario member IDs (typically [actual, budget]).
+  // For VARIANCE the third synthetic column 'Δ%' is computed as (s0 - s1) / s1.
+  scenarioIds    String[]                          // 0 entries for STANDARD
+
+  // POV defaults — JSON map of { dimKind: defaultMemberId }
+  povDefaults    Json    @default("{}")
+
+  isActive       Boolean @default(true)
+  isDefault      Boolean @default(false)            // exactly 0 or 1 per tenant
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedBy      String?
+  updatedAt      DateTime @updatedAt
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("data_forms")
 }
 
 // ═══════════════════════════════════════════════════════════════════
