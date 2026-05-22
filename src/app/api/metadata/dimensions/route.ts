@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     include: { _count: { select: { members: true } } },
   });
 
-  return apiSuccess(toLegacyShape(upserted));
+  return apiResponse(toLegacyShape(upserted));
 }
 
 // PUT body shape: same as POST. The page calls PUT /api/metadata/dimensions/<id>
