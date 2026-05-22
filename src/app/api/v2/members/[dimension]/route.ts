@@ -88,6 +88,12 @@ export async function POST(
   if (authResult instanceof Response) return authResult;
   const { auth } = authResult;
 
+  // VIEWER is read-only. Block writes at the role layer. QA PERM-004
+  // caught that any authenticated user (incl. viewer) could POST members.
+  if (auth.role === "VIEWER") {
+    return apiError("Viewer role cannot create members", 403);
+  }
+
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 

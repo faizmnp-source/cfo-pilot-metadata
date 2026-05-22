@@ -89,6 +89,14 @@ export async function PUT(req: NextRequest) {
   if (authResult instanceof Response) return authResult;
   const { auth } = authResult;
 
+  // Admin-only. Caught by QA case FEAT-004 / PERM-002: previously any
+  // authenticated user could toggle features. Tenant features control
+  // which dims are active / whether intercompany consolidation runs —
+  // a compliance + correctness risk, not just a permission nit.
+  if (auth.role !== "ADMIN") {
+    return apiError("Admin role required to change tenant features", 403);
+  }
+
   let body: unknown;
   try { body = await req.json(); } catch { return apiError("Invalid JSON body", 400); }
 
