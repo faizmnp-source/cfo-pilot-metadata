@@ -87,7 +87,10 @@ export default function DataInputPage() {
       // Sensible defaults
       if (scns[0])    setScenarioId(scns[0].id);
       if (ents[0])    setEntityId(ents[0].id);
-      if (base)       setCurrencyId(base.id);
+      // Currency: prefer is_base, fall back to first available, leave empty
+      // only if the tenant truly has zero currencies (server auto-seeds USD).
+      const ccyPick = base?.id ?? ccys[0]?.id;
+      if (ccyPick)   setCurrencyId(ccyPick);
       const none = icps_.find(m => m.code === "None"); if (none) setIcpId(none.id);
       const form = orgs.find(m => m.code === "Form");  if (form) setOriginId(form.id);
       const fy   = all_times.find(m => /^FY\d{4}$/.test(m.code)); if (fy) setYearCode(fy.code);
@@ -135,18 +138,24 @@ export default function DataInputPage() {
     setSavingKey(key);
     setError(null);
     try {
+      // Build body — drop empty strings so server defaults can kick in.
+      const body: Record<string, any> = { scenarioId, timeId, entityId, accountId, value };
+      if (currencyId) body.currencyId = currencyId;
+      if (icpId)      body.icpId      = icpId;
+      if (originId)   body.originId   = originId;
+
       const r = await fetch("/api/v2/facts", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenarioId, timeId, entityId, accountId,
-          currencyId, icpId, originId,
-          value,
-        }),
+        body: JSON.stringify(body),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      if (!r.ok) {
+        const detail = j?.details?.issues?.[0]?.message;
+        const fullMsg = detail ? `${j.error} — ${detail}` : (j?.error ?? `HTTP ${r.status}`);
+        throw new Error(fullMsg);
+      }
       // Patch grid state with the new value
       setGrid((g) => g ? {
         ...g,

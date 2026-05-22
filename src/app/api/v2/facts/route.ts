@@ -23,6 +23,7 @@ import { audit } from "@/lib/audit-v2";
 import { ensureOriginMember, FORM_ORIGIN_CODE } from "@/lib/seed-origin";
 import { findNonLeafMembers } from "@/lib/leaf-check";
 import { ensureIcpSeed } from "@/lib/sync-icp";
+import { ensureBaseCurrencyMember } from "@/lib/seed-currency";
 
 // ─── GET: load a POV slice into a {accounts × months} matrix ────────
 
@@ -162,21 +163,29 @@ export async function POST(req: NextRequest) {
 
   if (auth.role === "VIEWER") return apiError("Viewer role cannot save facts", 403);
 
-  let body: unknown;
+  let body: any;
   try { body = await req.json(); } catch { return apiError("Invalid JSON body", 400); }
+
+  // Defensive: drop empty-string POV values before parsing. Frontends often
+  // send '' for unset dropdowns and Zod's .uuid() rejects empty string.
+  for (const k of ["currencyId","icpId","originId","ud1Id","ud2Id","ud3Id","ud4Id","ud5Id","ud6Id","ud7Id","ud8Id"]) {
+    if (body && typeof body === "object" && body[k] === "") delete body[k];
+  }
+
   const parsed = SaveCellSchema.safeParse(body);
-  if (!parsed.success) return apiError("Validation failed", 422, { issues: parsed.error.issues });
+  if (!parsed.success) {
+    const issues = parsed.error.issues;
+    const first = issues[0];
+    const msg = first ? `${first.path.join(".") || "body"}: ${first.message}` : "Validation failed";
+    return apiError(msg, 422, { issues });
+  }
   const input = parsed.data;
 
   // ── Defaults: currency, icp, origin ───────────────────────────────
+  // Currency: prefer caller-provided, else tenant base, else auto-seed USD.
   let currencyId = input.currencyId;
   if (!currencyId) {
-    const baseCcy = await prisma.dimensionMember.findFirst({
-      where: { tenantId: auth.tid, properties: { path: ["is_base"], equals: true } },
-      select: { id: true },
-    });
-    currencyId = baseCcy?.id;
-    if (!currencyId) return apiError("No base currency configured for tenant", 409);
+    currencyId = await ensureBaseCurrencyMember(auth.tid, auth.sub);
   }
 
   let icpId = input.icpId;
