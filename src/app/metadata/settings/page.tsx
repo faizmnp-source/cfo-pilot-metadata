@@ -33,14 +33,14 @@ interface Settings {
 
 // Feature flags (mirror tenant_features table). LocalStorage-backed for now;
 // task #12 wires the real /api/tenant-features endpoint.
+// Department / Cost Center / Project dropped per EPM-architect call:
+// any tenant that wants them configures a UD slot (UD1=Department etc.)
+// via Configure Dimensions. No special-case flags here.
 type FeatureFlags = {
   multi_entity_enabled: boolean;
   multi_currency_enabled: boolean;
   intercompany_enabled: boolean;
   alternate_hierarchy_enabled: boolean;
-  department_enabled: boolean;
-  cost_center_enabled: boolean;
-  project_enabled: boolean;
 };
 
 const DEFAULT_FLAGS: FeatureFlags = {
@@ -48,9 +48,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   multi_currency_enabled: false,
   intercompany_enabled: false,
   alternate_hierarchy_enabled: true,
-  department_enabled: true,
-  cost_center_enabled: false,
-  project_enabled: false,
 };
 
 export default function AppSettingsPage() {
@@ -147,11 +144,16 @@ export default function AppSettingsPage() {
   const isLocked = settings.isSetupComplete && !editingUnlocked;
   const canUnlock = userRole === "ADMIN";
 
-  const handleGeneratePeriods = () => {
+  const [periodPersistError, setPeriodPersistError] = useState<string | null>(null);
+  const [periodPersistInfo,  setPeriodPersistInfo]  = useState<string | null>(null);
+
+  const handleGeneratePeriods = async () => {
     const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
     setPeriodPreview(nodes);
-    // Persist to localStorage so the Time dimension page picks them up
-    // until the API route is migrated (task #8).
+    setPeriodPersistError(null);
+    setPeriodPersistInfo("Saving periods to Dimension Library…");
+
+    // 1) Local cache for any UI still reading from localStorage
     try {
       window.localStorage.setItem("cfo_pilot_time_periods", JSON.stringify(nodes));
       window.localStorage.setItem("cfo_pilot_time_periods_meta", JSON.stringify({
@@ -161,6 +163,90 @@ export default function AppSettingsPage() {
         generatedAt: new Date().toISOString(),
       }));
     } catch { /* ignore */ }
+
+    // 2) POST each member to /api/v2/members/time, then wire edges so the
+    //    Library tree shows YEAR > QUARTER > MONTH. Skips 409 (already exists)
+    //    so Generate is idempotent.
+    const codeToId: Record<string, string> = {};
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const n of nodes) {
+      const properties: Record<string, any> = {
+        period_type:  n.type,            // YEAR | QUARTER | MONTH (matches TimePeriodType)
+        fiscal_year:  n.fiscalYear,
+        start_date:   n.startDate,
+        end_date:     n.endDate,
+      };
+      if (n.monthIndex   !== undefined) properties.month_index   = n.monthIndex;
+      if (n.quarterIndex !== undefined) properties.quarter_index = n.quarterIndex;
+
+      const body = {
+        memberCode: n.code,
+        memberName: n.name,
+        properties,
+      };
+      try {
+        const r = await fetch("/api/v2/members/time", {
+          method:      "POST",
+          credentials: "include",
+          headers:     { "Content-Type": "application/json" },
+          body:        JSON.stringify(body),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data?.data?.id) {
+          codeToId[n.code] = data.data.id;
+          created++;
+        } else if (r.status === 409) {
+          // already exists — fetch its id so we can still build edges
+          skipped++;
+          const list = await fetch(
+            `/api/v2/members/time?search=${encodeURIComponent(n.code)}&pageSize=5`,
+            { credentials: "include" },
+          ).then((x) => x.json()).catch(() => null);
+          const match = (list?.data?.data ?? []).find((m: any) => m.memberCode === n.code);
+          if (match) codeToId[n.code] = match.id;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    // 3) Build hierarchy edges (parent→child) under 'default'
+    let edgesCreated = 0;
+    let edgesSkipped = 0;
+    for (const n of nodes) {
+      if (!n.parentCode) continue;
+      const parentId = codeToId[n.parentCode];
+      const childId  = codeToId[n.code];
+      if (!parentId || !childId) continue;
+      try {
+        const r = await fetch("/api/v2/hierarchy/time", {
+          method:      "POST",
+          credentials: "include",
+          headers:     { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hierarchyCode:  "default",
+            parentMemberId: parentId,
+            childMemberId:  childId,
+            operator:       "ADD",
+            weight:         1,
+          }),
+        });
+        if (r.ok) edgesCreated++;
+        else if (r.status === 409) edgesSkipped++;
+      } catch { /* ignore — best effort */ }
+    }
+
+    if (failed > 0) {
+      setPeriodPersistError(`${failed} member(s) failed to save. Check console + tenant_features 'time' dim is enabled.`);
+    }
+    setPeriodPersistInfo(
+      `Saved to Library: ${created} created · ${skipped} already existed · ${edgesCreated} edges added (${edgesSkipped} existed).`,
+    );
   };
 
   useEffect(() => {
@@ -413,10 +499,10 @@ export default function AppSettingsPage() {
           {periodPreview && (
             <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/40 max-h-72 overflow-y-auto">
               <p className="text-xs text-emerald-700 mb-2 font-medium">
-                ✅ Generated &amp; saved {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
+                ✅ Generated {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
                 {" "}{periodPreview.filter((n) => n.type === "QUARTER").length} quarters ·
-                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months) — visible now on{" "}
-                <a href="/metadata/time" className="underline">Time dimension page</a>.
+                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months) — visible on{" "}
+                <a href="/metadata/library" className="underline">Dimension Library</a>.
               </p>
               <ul className="text-sm space-y-0.5 font-mono">
                 {periodPreview.map((n) => (
@@ -432,9 +518,12 @@ export default function AppSettingsPage() {
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-amber-700 mt-3">
-                ⚠️ Saved to browser only. Full DB persistence kicks in after API migration (task #8).
-              </p>
+              {periodPersistInfo && (
+                <p className="text-xs text-emerald-700 mt-3">{periodPersistInfo}</p>
+              )}
+              {periodPersistError && (
+                <p className="text-xs text-red-700 mt-1">⚠️ {periodPersistError}</p>
+              )}
             </div>
           )}
         </div>
@@ -448,17 +537,50 @@ export default function AppSettingsPage() {
         </div>
         <div className="p-6">
           <p className="text-sm text-gray-600 mb-4">
-            Always-on (cannot disable): <strong>Account · Entity · Scenario · Time · Currency</strong>.
-            Toggle the optional dimensions and modules below — your sidebar updates after a refresh.
+            Always-on dimensions: <strong>Account · Entity · Scenario · Time</strong>.
+            Want extra dimensions like Department, Cost Center, Project, or Customer? Add a
+            user-defined dimension on the <strong>Configure Dimensions</strong> page (UD1–UD8).
           </p>
+
+          {/* Currency mode — explicit single-vs-multi choice (clearer than a hidden checkbox) */}
+          <div className="mb-5 rounded-lg border border-gray-200 p-4">
+            <p className="text-sm font-medium text-gray-900 mb-1">Currency mode</p>
+            <p className="text-xs text-gray-500 mb-3">
+              Single-currency apps skip FX translation entirely. Multi-currency turns on the
+              Currency dimension, FX rates, and currency-translation behaviour on accounts.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => saveFlag("multi_currency_enabled", false)}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  !flags.multi_currency_enabled
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Single currency
+                <span className="block text-xs font-normal opacity-70 mt-0.5">USD only · no FX</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => saveFlag("multi_currency_enabled", true)}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  flags.multi_currency_enabled
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                Multi-currency
+                <span className="block text-xs font-normal opacity-70 mt-0.5">Currency dim + FX</span>
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-3">
             {[
               { key: "multi_entity_enabled",   label: "Multi-Entity",          desc: "Enable entity hierarchy + consolidation methods" },
-              { key: "multi_currency_enabled", label: "Multi-Currency / FX",   desc: "Enable the FX rates table and currency translation behaviour" },
               { key: "intercompany_enabled",   label: "Intercompany (ICP)",    desc: "Enable ICP dimension and elimination tags on Entity" },
-              { key: "department_enabled",     label: "Department",            desc: "Reserve a UD slot for Departments (default ON)" },
-              { key: "cost_center_enabled",    label: "Cost Center",           desc: "Reserve a UD slot for Cost Centers" },
-              { key: "project_enabled",        label: "Project",               desc: "Reserve a UD slot for Projects" },
               { key: "alternate_hierarchy_enabled", label: "Alternate Hierarchies", desc: "Multiple named hierarchies per dim (statutory vs management view)" },
             ].map((f) => (
               <label key={f.key} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
