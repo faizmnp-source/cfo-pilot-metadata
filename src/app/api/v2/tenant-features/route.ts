@@ -31,9 +31,10 @@ const KNOWN_FEATURES = {
   multi_currency_enabled:      false,
   intercompany_enabled:        false,
   alternate_hierarchy_enabled: true,
-  department_enabled:          true,
-  cost_center_enabled:         false,
-  project_enabled:             false,
+  // department_enabled / cost_center_enabled / project_enabled dropped
+  // per EPM-architect call: any tenant that wants those configures a UD
+  // slot (UD1=Department etc.) via Configure Dimensions. No special-case
+  // flags. Saves ~150 lines of code + 4 toggle paths.
 } as const;
 
 type FeatureKey = keyof typeof KNOWN_FEATURES;
