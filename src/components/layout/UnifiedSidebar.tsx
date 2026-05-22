@@ -6,6 +6,7 @@ import {
   FileText, Table2, Sparkles, Bell, Settings, ChevronLeft, ChevronRight,
   Navigation, BookOpen, Building2, GitBranch, Layers, Upload, ShieldCheck,
   History, LogOut, DollarSign, Globe, Clock, Link2, FolderKanban, Settings2,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -33,6 +34,7 @@ const CFO_NAV = [
 const META_NAV_CORE = [
   { href: "/metadata",         label: "Overview",          icon: Layers },
   { href: "/metadata/library", label: "Dimension Library", icon: BookOpen },
+  { href: "/data/input",       label: "Data Input",        icon: Pencil },
 ];
 
 const META_NAV_BOTTOM = [

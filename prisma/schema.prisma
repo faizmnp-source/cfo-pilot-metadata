@@ -140,6 +140,7 @@ model Tenant {
   hierarchyEdges  HierarchyEdge[]
   currencies      CurrencyRef[]     // per-tenant active list, seeded from CurrencyCatalog
   auditLogs       AuditLog[]
+  factRows        FactRow[]
 
   @@index([slug])
   @@map("tenants")
@@ -383,11 +384,65 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─── Fact Rows (the actual data values) ───────────────────────────
+
+// One row per intersection. Every fact carries an originId so we can filter
+// by source (Import / Form / AI / Calc / etc.). UD1..UD8 are nullable —
+// only the tenant's enabled UDs get values, the rest stay NULL.
+//
+// All dim FKs reference dimension_members.id directly — no separate fact_dim
+// lookup table. That keeps the read path one join shallower.
+
+model FactRow {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    String
+  scenarioId  String
+  timeId      String                 // leaf MONTH (or week/day) only — rollups derived
+  entityId    String
+  accountId   String
+  currencyId  String
+  icpId       String                 // FK to dimension_member, defaults to [None]
+  originId    String                 // FK to dimension_member in ORIGIN dim (Form / Import / AI / ...)
+  ud1Id       String?
+  ud2Id       String?
+  ud3Id       String?
+  ud4Id       String?
+  ud5Id       String?
+  ud6Id       String?
+  ud7Id       String?
+  ud8Id       String?
+
+  // Three currency views. V1 sets all three equal until multi-currency lands.
+  valueTxn       Decimal @db.Decimal(28, 8) @default(0)
+  valueLocal     Decimal @db.Decimal(28, 8) @default(0)
+  valueReporting Decimal @db.Decimal(28, 8) @default(0)
+
+  // Versioning + audit lineage
+  loadBatchId    String?               // null for manual form input
+  rateSetId      String?               // FK to FxRateSet when we ship FX
+  sourceRowHash  Bytes?                // dedup key for file imports
+  version        Int     @default(1)
+  isCurrent      Boolean @default(true)
+  postedBy       String                // user.id who saved it
+  postedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Unique on full intersection + version flag — only one isCurrent=true row
+  // per intersection per origin. Re-saves bump version and supersede.
+  @@unique([tenantId, scenarioId, timeId, entityId, accountId, icpId, originId, ud1Id, ud2Id, ud3Id, ud4Id, ud5Id, ud6Id, ud7Id, ud8Id, isCurrent], name: "fact_intersection_current")
+  // Query indexes for the common access patterns
+  @@index([tenantId, scenarioId, timeId, entityId])           // POV-scoped grid load
+  @@index([tenantId, accountId, timeId])                       // account-history queries
+  @@index([tenantId, postedAt])                                // recent-activity feed
+  @@map("fact_rows")
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // WHAT'S INTENTIONALLY NOT IN THIS DRAFT (deferred per Faizan):
-//   - fact tables (no calc/data load yet)
-//   - mapping rules (next slice)
+//   - mapping rules (next slice — file-import path)
 //   - FX rates table (only if multi_currency_enabled flips on)
-//   - import jobs (next slice — once metadata is locked)
+//   - load_batch staging table (next slice — file-import path)
 //   - Postgres RLS policies (separate migration after schema lock)
 // ═══════════════════════════════════════════════════════════════════
