@@ -26,6 +26,6 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "api-smoke", testMatch: /.*\.smoke\.spec\.ts/ },
+    { name: "api-smoke", testMatch: /smoke\.spec\.ts$/ },
   ],
 });
