@@ -151,11 +151,13 @@ export async function POST(req: NextRequest) {
     await audit({
       tenantId:   auth.tid,
       userId:     auth.sub,
-      action:     "BULK_GENERATE_TIME",
+      // AuditAction enum is limited — BULK_UPDATE is the closest fit. The
+      // 'kind' + 'op' metadata fields disambiguate this from other bulk ops.
+      action:     "BULK_UPDATE",
       entityType: "dimension",
       entityId:   dim.id,
       after:      { fiscalYearStartMonth, startFY, numYears, membersCreated, edgesCreated },
-      metadata:   { kind: "TIME" },
+      metadata:   { kind: "TIME", op: "bulk_generate" },
     });
   } catch { /* never block on audit */ }
 
