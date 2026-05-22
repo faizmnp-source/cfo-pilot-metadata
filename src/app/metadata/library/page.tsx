@@ -14,16 +14,16 @@ import { ExcelImport } from "@/components/metadata/v2/ExcelImport";
 
 interface DimOption { slug: SupportedDim; label: string; description: string; }
 
-// Static catalog of dims the UI knows how to render. The dropdown filters
-// these by the tenant's feature flags (UD slots show only when configured).
-const ALL_DIMS: DimOption[] = [
+// Always-on catalog: the 5 + ICP dims the UI knows how to render. UD1..UD8
+// are appended dynamically from /api/metadata/dimensions when they exist
+// (configured via Configure Dimensions page).
+const CORE_DIMS: DimOption[] = [
   { slug: "account",  label: "Account",            description: "Chart of accounts — assets, liabilities, revenue, expense, stat, KPI" },
   { slug: "entity",   label: "Entity",             description: "Legal entities, subsidiaries, ownership %, base currency" },
   { slug: "scenario", label: "Scenario",           description: "Actual, Budget, Forecast, What-If — version-controlled" },
   { slug: "time",     label: "Time Period",        description: "Fiscal years, quarters, months — handles non-Jan fiscal years" },
   { slug: "currency", label: "Currency",           description: "ISO 4217 prefilled, base currency per tenant" },
   { slug: "icp",      label: "Intercompany Partner", description: "ICP counterparties — only enabled when intercompany is on" },
-  // UD1..UD8 added below if the tenant has them named
 ];
 
 export default function DimensionLibraryPage() {
@@ -33,6 +33,7 @@ export default function DimensionLibraryPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [userDims, setUserDims] = useState<DimOption[]>([]);
 
   // Load feature flags so we hide disabled dims
   useEffect(() => {
@@ -40,23 +41,49 @@ export default function DimensionLibraryPage() {
       .then((r) => r.json())
       .then((d) => setFeatures(d?.data?.flags ?? {}))
       .catch(() => { /* fall through to defaults */ });
-  }, []);
+  }, [refreshKey]);
 
-  // Refresh counts when refreshKey changes
+  // Load user-configured UDs from the Configure Dimensions page so they
+  // appear in the selector dropdown. Without this, renaming UD1 to "Doctor"
+  // (or any UD config) had no visible effect on the Library — caught by
+  // Faizan's hand-test.
   useEffect(() => {
-    ALL_DIMS.forEach((d) => {
+    fetch("/api/metadata/dimensions", { credentials: "include" })
+      .then((r) => r.json())
+      .then((res) => {
+        const rows = Array.isArray(res?.data?.data) ? res.data.data : [];
+        const uds: DimOption[] = rows
+          .filter((d: any) => d.isActive && /^UD[1-8]$/.test(String(d.slot ?? "")))
+          .map((d: any) => ({
+            slug: String(d.slot).toLowerCase() as SupportedDim,
+            label: d.name || d.slot,
+            description: `Custom dimension (${d.slot}) — ${d.pluralName ?? d.name ?? ""}`,
+          }));
+        setUserDims(uds);
+      })
+      .catch(() => { /* defaults: no UDs visible */ });
+  }, [refreshKey]);
+
+  // Visible dim list = CORE_DIMS filtered by features, + user-configured UDs
+  const visibleDims: DimOption[] = [
+    ...CORE_DIMS.filter((d) => {
+      if (d.slug === "icp")      return features.intercompany_enabled !== false; // default ON until features load
+      if (d.slug === "currency") return features.multi_currency_enabled !== false; // hide when single-currency
+      return true;
+    }),
+    ...userDims,
+  ];
+
+  // Refresh counts when refreshKey or the visible list changes
+  useEffect(() => {
+    visibleDims.forEach((d) => {
       fetch(`/api/v2/members/${d.slug}?pageSize=1`, { credentials: "include" })
         .then((r) => r.json())
         .then((data) => setCounts((c) => ({ ...c, [d.slug]: data?.data?.total ?? 0 })))
         .catch(() => { /* ignore */ });
     });
-  }, [refreshKey]);
-
-  // Filter dims by feature flags
-  const visibleDims = ALL_DIMS.filter((d) => {
-    if (d.slug === "icp") return features.intercompany_enabled !== false; // default ON if not loaded yet
-    return true;
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey, userDims.length, features.intercompany_enabled, features.multi_currency_enabled]);
 
   const activeDim = visibleDims.find((d) => d.slug === selectedDim) ?? visibleDims[0];
 
