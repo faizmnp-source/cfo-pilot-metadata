@@ -135,6 +135,24 @@ export async function PUT(req: NextRequest) {
     });
     results.push({ key: upserted.featureKey, isEnabled: upserted.isEnabled });
 
+    // ── Sync the corresponding Dimension row's isEnabled flag ───────────
+    // The v2/members/[dimension] route gates reads on Dimension.isEnabled.
+    // Without this sync, toggling a tenant feature silently no-ops the gate.
+    // Only ICP currently has a 1:1 mapping; UD slots have their own
+    // per-Dimension toggle via the Library UI.
+    const FEATURE_TO_DIM_KIND: Partial<Record<FeatureKey, string>> = {
+      intercompany_enabled: "ICP",
+    };
+    const linkedKind = FEATURE_TO_DIM_KIND[u.key];
+    if (linkedKind) {
+      try {
+        await prisma.dimension.updateMany({
+          where: { tenantId: auth.tid, kind: linkedKind as any },
+          data:  { isEnabled: u.isEnabled },
+        });
+      } catch { /* never let dim-sync fail the feature toggle */ }
+    }
+
     try {
       await audit({
         tenantId: auth.tid,
