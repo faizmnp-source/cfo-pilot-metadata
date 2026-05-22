@@ -79,8 +79,20 @@ export const CurrencyPropertiesSchema = z.object({
 
 // ─── ICP (Intercompany Partner) ──────────────────────────────────
 
+// ICP is system-managed (see src/lib/sync-icp.ts). Three valid shapes:
+//   1. { is_system: true }                              ← the [None] row
+//   2. { entity_id, source_entity, auto_derived: true } ← auto-derived from Entity
+//   3. { entity_id }                                    ← legacy manual rows
+//
+// All three are allowed at the schema level. Direct user writes to ICP are
+// blocked at the route layer (system-managed dim — toggle Entity.icp_enabled
+// instead). Schema stays permissive so the system writer's payload always
+// passes validation.
 export const IcpPropertiesSchema = z.object({
-  entity_id:  z.string().uuid("Must reference an Entity member id"),
+  entity_id:     z.string().uuid("Must reference an Entity member id").optional(),
+  source_entity: z.string().optional(),
+  auto_derived:  z.boolean().optional(),
+  is_system:     z.boolean().optional(),
 }).strict();
 
 // ─── UD1..UD8 (user-defined) ─────────────────────────────────────
