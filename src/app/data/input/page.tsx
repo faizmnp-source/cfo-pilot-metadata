@@ -38,12 +38,25 @@ async function fetchDimMembers(slug: string, limit = 200): Promise<Member[]> {
     .map((m: any) => ({ id: m.id, code: m.memberCode, name: m.memberName }));
 }
 
-async function fetchBaseCurrency(): Promise<Member | null> {
+type CcyMember = Member & { isLocal?: boolean; isReporting?: boolean; isBase?: boolean };
+
+async function fetchCurrencyMembers(): Promise<CcyMember[]> {
   const r = await fetch(`/api/v2/members/currency?pageSize=200`, { credentials: "include" });
   const j = await r.json().catch(() => null);
-  const rows = j?.data?.data ?? [];
-  const base = rows.find((m: any) => m?.properties?.is_base === true) ?? rows[0];
-  return base ? { id: base.id, code: base.memberCode, name: base.memberName } : null;
+  return (j?.data?.data ?? [])
+    .filter((m: any) => m.isActive)
+    .map((m: any) => ({
+      id: m.id, code: m.memberCode, name: m.memberName,
+      isLocal:     Boolean(m?.properties?.is_local),
+      isReporting: Boolean(m?.properties?.is_reporting),
+      isBase:      Boolean(m?.properties?.is_base),
+    }));
+}
+
+async function fetchTenantFeatures(): Promise<Record<string, boolean>> {
+  const r = await fetch(`/api/v2/tenant-features`, { credentials: "include" });
+  const j = await r.json().catch(() => null);
+  return j?.data?.flags ?? {};
 }
 
 export default function DataInputPageWrapper() {
@@ -96,24 +109,31 @@ function DataInputPage() {
   // ─── Load POV options once ────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const [scns, ents, all_times, ccys, icps_, orgs, base] = await Promise.all([
+      const [scns, ents, all_times, ccyMembers, icps_, orgs, features] = await Promise.all([
         fetchDimMembers("scenario"),
         fetchDimMembers("entity"),
         fetchDimMembers("time", 500),
-        fetchDimMembers("currency"),
+        fetchCurrencyMembers(),
         fetchDimMembers("icp"),
         fetchDimMembers("origin"),
-        fetchBaseCurrency(),
+        fetchTenantFeatures(),
       ]);
       setScenarios(scns);
       setEntities(ents);
       setYears(all_times.filter(m => /^FY\d{4}$/.test(m.code)));
-      setCurrencies(ccys);
+      setCurrencies(ccyMembers.map(c => ({ id: c.id, code: c.code, name: c.name })));
       setIcps(icps_);
       setOrigins(orgs);
       if (scns[0])    setScenarioId(prev => prev || scns[0].id);
       if (ents[0])    setEntityId(prev => prev || ents[0].id);
-      const ccyPick = base?.id ?? ccys[0]?.id; if (ccyPick) setCurrencyId(prev => prev || ccyPick);
+      // Currency pick: single-currency app → Reporting; multi-currency → Local.
+      // Falls through to the explicit base / first member if Reporting/Local
+      // weren't seeded yet (legacy tenants).
+      const multi = features.multi_currency_enabled === true;
+      const preferred = multi
+        ? ccyMembers.find(c => c.isLocal)     ?? ccyMembers.find(c => c.isBase) ?? ccyMembers[0]
+        : ccyMembers.find(c => c.isReporting) ?? ccyMembers.find(c => c.isBase) ?? ccyMembers[0];
+      if (preferred?.id) setCurrencyId(prev => prev || preferred.id);
       const none = icps_.find(m => m.code === "None"); if (none) setIcpId(prev => prev || none.id);
       const formO = orgs.find(m => m.code === "Form");  if (formO) setOriginId(prev => prev || formO.id);
       const fy   = all_times.find(m => /^FY\d{4}$/.test(m.code)); if (fy) setYearCode(prev => prev || fy.code);

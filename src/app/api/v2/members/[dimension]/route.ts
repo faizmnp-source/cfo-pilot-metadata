@@ -17,6 +17,7 @@ import {
 import { ensureDimension } from "@/lib/ensure-dimension";
 import { syncIcpFromEntity } from "@/lib/sync-icp";
 import { ensureImportOriginMember } from "@/lib/seed-origin";
+import { ensureCurrencySeed } from "@/lib/seed-currency";
 
 // ─── GET /api/v2/members/[dimension] ─────────────────────────────
 
@@ -43,6 +44,15 @@ export async function GET(
   if (kind === "ORIGIN") {
     try { await ensureImportOriginMember(auth.tid, auth.sub); } catch (e) {
       console.error("[seed-origin] ensureImportOriginMember failed:", e);
+    }
+  }
+
+  // Seed Local / Reporting / base USD on first Currency GET. Same idempotent
+  // pattern. Single-currency tenants still benefit — Reporting is the default
+  // POV pick and resolves to USD.
+  if (kind === "CURRENCY") {
+    try { await ensureCurrencySeed(auth.tid, auth.sub); } catch (e) {
+      console.error("[seed-currency] ensureCurrencySeed failed:", e);
     }
   }
 
