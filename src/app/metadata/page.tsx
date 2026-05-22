@@ -65,7 +65,8 @@ export default function MetadataDashboard() {
     setLoading(true);
     fetch("/api/metadata/stats")
       .then((r) => r.json())
-      .then((data) => setStats(data))
+      // API wraps payload as { success, data } — unwrap before storing.
+      .then((res) => setStats(res?.data ?? null))
       .catch(() => setStats(null))
       .finally(() => setLoading(false));
   };
