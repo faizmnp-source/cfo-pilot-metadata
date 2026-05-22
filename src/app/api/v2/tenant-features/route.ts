@@ -21,8 +21,12 @@ import { apiError, apiResponse as apiSuccess } from "@/lib/utils";
 import { audit } from "@/lib/audit-v2";
 
 // Single source of truth for the supported keys + their defaults. The UI
-// reads this to render the toggle list; the API rejects unknown keys.
-export const KNOWN_FEATURES = {
+// reads this via the GET response (flags + knownKeys); the API rejects
+// unknown keys. NOT exported from this file: Next.js App Router rejects
+// any export from route.ts that isn't an HTTP verb or one of its config
+// symbols (runtime, dynamic, revalidate, etc). If another module needs
+// this list, factor it into src/lib/tenant-features-config.ts.
+const KNOWN_FEATURES = {
   multi_entity_enabled:        false,
   multi_currency_enabled:      false,
   intercompany_enabled:        false,
@@ -32,7 +36,7 @@ export const KNOWN_FEATURES = {
   project_enabled:             false,
 } as const;
 
-export type FeatureKey = keyof typeof KNOWN_FEATURES;
+type FeatureKey = keyof typeof KNOWN_FEATURES;
 const FEATURE_KEYS = Object.keys(KNOWN_FEATURES) as FeatureKey[];
 
 const SingleUpdateSchema = z.object({
