@@ -222,8 +222,19 @@ export default function DimensionsPage() {
     setLoading(true);
     fetch("/api/metadata/dimensions")
       .then((r) => r.json())
-      .then((data) => {
-        setDims(Array.isArray(data) ? data : (data.data ?? []));
+      .then((res) => {
+        // API wraps payload as {success, data: {data:[], total, page, ...}}.
+        // Old code read res.data which is the paginated wrapper (not an
+        // array) — caused TypeError: e.filter is not a function on the
+        // /metadata/dimensions page. Unwrap one more level, with fallbacks.
+        const rows = Array.isArray(res)
+          ? res
+          : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.data?.data)
+              ? res.data.data
+              : [];
+        setDims(rows);
         setError(false);
       })
       .catch(() => setError(true))
