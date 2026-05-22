@@ -75,11 +75,62 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST/PUT to this legacy endpoint is intentionally 410 — UD configuration
-// now happens through /api/v2/tenant-features and the new Library page.
-export async function POST() {
-  return apiError(
-    "This endpoint is deprecated. Use the Dimension Library to manage UDx slots.",
-    410,
-  );
+// POST wires the legacy "Configure Dimensions" page (src/app/metadata/dimensions/page.tsx)
+// to the v2 Dimension table. The page sends:
+//   { slot: "UD1" | ... | "UD8", name: string, pluralName?: string, isActive?: boolean }
+// We map slot → kind, name → label, isActive → isEnabled and upsert on
+// the (tenantId, kind) unique pair. isCustom is always true for UDs.
+//
+// Returns the legacy-shape row so the page's optimistic update works.
+import type { DimensionKind } from "@prisma/client";
+
+const UD_SLOTS = new Set(["UD1","UD2","UD3","UD4","UD5","UD6","UD7","UD8"]);
+
+export async function POST(req: NextRequest) {
+  const authResult = await requireAuth(req);
+  if (authResult instanceof Response) return authResult;
+  const { auth } = authResult;
+
+  if (auth.role !== "ADMIN") {
+    return apiError("Admin role required to configure dimensions", 403);
+  }
+
+  let body: any = {};
+  try { body = await req.json(); } catch { return apiError("Invalid JSON body", 400); }
+
+  const slot   = String(body?.slot ?? "").toUpperCase();
+  const name   = String(body?.name ?? "").trim();
+  const active = body?.isActive !== false; // default true
+
+  if (!UD_SLOTS.has(slot)) {
+    return apiError(`Slot must be one of UD1..UD8 (v2 schema supports 8 slots, not 10). Got: ${slot}`, 400);
+  }
+  if (!name) return apiError("Display name (name) is required", 422);
+
+  // Upsert by (tenantId, kind). The kind enum already includes UD1..UD8.
+  const upserted = await prisma.dimension.upsert({
+    where: {
+      // Composite unique index; in the v2 schema this is (tenantId, kind)
+      tenantId_kind: { tenantId: auth.tid, kind: slot as DimensionKind } as any,
+    },
+    create: {
+      tenantId:  auth.tid,
+      kind:      slot as DimensionKind,
+      code:      slot.toLowerCase(),
+      label:     name,
+      isEnabled: active,
+      isCustom:  true,
+    },
+    update: {
+      label:     name,
+      isEnabled: active,
+    },
+    include: { _count: { select: { members: true } } },
+  });
+
+  return apiSuccess(toLegacyShape(upserted));
 }
+
+// PUT body shape: same as POST. The page calls PUT /api/metadata/dimensions/<id>
+// — handled in dimensions/[id]/route.ts. We re-export the helper there.
+export async function PUT(req: NextRequest) { return POST(req); }
