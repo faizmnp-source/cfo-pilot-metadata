@@ -2,10 +2,16 @@
 // Settings page in v1. Sidebar reads from here to render optional dims.
 //
 // URL shape:
-//   GET /api/v2/tenant-features                  → all flags for tenant
-//   PUT /api/v2/tenant-features                  → upsert one or many
-//        body: { featureKey: 'intercompany_enabled', isEnabled: true }
-//          or: { flags: { intercompany_enabled: true, department_enabled: false } }
+//   GET   /api/v2/tenant-features                → all flags for tenant
+//   PUT   /api/v2/tenant-features                → upsert one or many (canonical)
+//   PATCH /api/v2/tenant-features                → alias of PUT (callers expect it)
+//        body: { featureKey: 'intercompany_enabled', isEnabled: true }   ← single
+//          or: { flags: { intercompany_enabled: true, ... } }            ← bulk by key
+//          or: { intercompany_enabled: true, ... }                       ← bulk flat
+//
+// The flat-bulk shape was added because real callers (and QA's test suite)
+// PATCH with `{ intercompany_enabled: true }` rather than wrapping in `flags:`.
+// Now accepted in addition to the older single/bulk shapes.
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
@@ -41,6 +47,15 @@ const BulkUpdateSchema = z.object({
   ),
 });
 
+// Flat shape: { intercompany_enabled: true, department_enabled: false }
+// Accepts any subset of KNOWN_FEATURES at the top level.
+const FlatBulkSchema = z.object(
+  Object.fromEntries(FEATURE_KEYS.map((k) => [k, z.boolean().optional()])) as any
+).refine(
+  (obj) => Object.keys(obj).some((k) => (FEATURE_KEYS as readonly string[]).includes(k)),
+  "At least one known feature key must be present",
+);
+
 // ─── GET ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -73,18 +88,31 @@ export async function PUT(req: NextRequest) {
   let body: unknown;
   try { body = await req.json(); } catch { return apiError("Invalid JSON body", 400); }
 
-  // Accept either single or bulk shape
+  // Accept single, bulk (flags-wrapped), or flat-bulk shape
   const single = SingleUpdateSchema.safeParse(body);
   const bulk   = BulkUpdateSchema.safeParse(body);
-  if (!single.success && !bulk.success) {
+  const flat   = FlatBulkSchema.safeParse(body);
+  if (!single.success && !bulk.success && !flat.success) {
     return apiError("Validation failed", 422, {
-      issues: { single: single.error?.issues, bulk: bulk.error?.issues },
+      issues: {
+        single: single.error?.issues,
+        bulk:   bulk.error?.issues,
+        flat:   flat.error?.issues,
+      },
     });
   }
 
-  const updates: Array<{ key: FeatureKey; isEnabled: boolean }> = single.success
-    ? [{ key: single.data.featureKey, isEnabled: single.data.isEnabled }]
-    : Object.entries(bulk.data!.flags).map(([k, v]) => ({ key: k as FeatureKey, isEnabled: v }));
+  let updates: Array<{ key: FeatureKey; isEnabled: boolean }>;
+  if (single.success) {
+    updates = [{ key: single.data.featureKey, isEnabled: single.data.isEnabled }];
+  } else if (bulk.success) {
+    updates = Object.entries(bulk.data!.flags).map(([k, v]) => ({ key: k as FeatureKey, isEnabled: v }));
+  } else {
+    // flat-bulk: only keep keys that match a known feature
+    updates = Object.entries(flat.data!)
+      .filter(([k, v]) => typeof v === "boolean" && (FEATURE_KEYS as readonly string[]).includes(k))
+      .map(([k, v]) => ({ key: k as FeatureKey, isEnabled: v as boolean }));
+  }
 
   const results: Array<{ key: string; isEnabled: boolean }> = [];
   for (const u of updates) {
@@ -120,5 +148,14 @@ export async function PUT(req: NextRequest) {
     } catch { /* ignore */ }
   }
 
-  return apiSuccess({ updated: results });
+  // Return the full current flag set so callers don't need a second GET.
+  const allRows = await prisma.tenantFeature.findMany({ where: { tenantId: auth.tid } });
+  const flags: Record<FeatureKey, boolean> = { ...KNOWN_FEATURES };
+  for (const r of allRows) flags[r.featureKey as FeatureKey] = r.isEnabled;
+
+  return apiSuccess({ updated: results, flags });
 }
+
+// PATCH is just an alias for PUT — same semantics. Added because real callers
+// (and QA's test suite) reach for PATCH for partial updates. Avoids 405 noise.
+export const PATCH = PUT;
