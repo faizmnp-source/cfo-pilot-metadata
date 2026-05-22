@@ -72,7 +72,12 @@ export async function GET(req: NextRequest) {
     where: { tenantId: auth.tid },
   });
   const stored: Record<string, boolean> = {};
-  for (const r of rows) stored[r.featureKey] = r.isEnabled;
+  // Filter out keys that have been REMOVED from KNOWN_FEATURES (dept/cc/project)
+  // so legacy DB rows don't keep surfacing flags that have no UI or behavior.
+  const allowed = new Set(FEATURE_KEYS as readonly string[]);
+  for (const r of rows) {
+    if (allowed.has(r.featureKey)) stored[r.featureKey] = r.isEnabled;
+  }
 
   // Merge with defaults — keys not yet persisted return their default
   const flags: Record<FeatureKey, boolean> = { ...KNOWN_FEATURES };
