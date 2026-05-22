@@ -28,5 +28,6 @@ export default defineConfig({
   projects: [
     { name: "api-smoke",     testMatch: /smoke\.spec\.ts$/ },
     { name: "coverage-full", testMatch: /coverage\.spec\.ts$/ },
+    { name: "coverage-v2",   testMatch: /coverage2\.spec\.ts$/ },
   ],
 });
