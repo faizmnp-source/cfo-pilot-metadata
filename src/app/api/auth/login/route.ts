@@ -5,6 +5,11 @@ import { signToken, setAuthCookie } from "@/lib/auth";
 import { LoginSchema } from "@/lib/validations";
 import { apiResponse, apiError } from "@/lib/utils";
 import { writeAuditLog } from "@/lib/audit";
+// NOTE: ensureUser was wired here to fix AUD-001 but caused an auth
+// regression (DB-first branch then bcrypt-compared against a placeholder
+// hash and 401'd every subsequent login). AUD-001 is now handled inside
+// audit-v2.ts by null-ing the userId when it doesn't resolve in the
+// users table — leaves the demo auth flow untouched.
 
 // Demo users for when DATABASE_URL is not configured
 const DEMO_USERS = [

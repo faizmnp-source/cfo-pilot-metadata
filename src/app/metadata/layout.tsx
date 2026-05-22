@@ -21,7 +21,7 @@ export default async function MetadataLayout({ children }: { children: React.Rea
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-page)]">
       <UnifiedSidebar userName={userName} userRole={userRole} />
-      <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
+      <div className="flex flex-1 flex-col overflow-y-auto">{children}</div>
     </div>
   );
 }

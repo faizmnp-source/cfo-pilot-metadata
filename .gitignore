@@ -12,3 +12,4 @@ coverage/
 uploads/
 
 .vercel
+tsconfig.tsbuildinfo

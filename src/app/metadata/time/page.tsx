@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { LayoutList, GitBranch, X } from "lucide-react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
 import { cn } from "@/lib/utils";
 
 interface TimePoint {
@@ -145,6 +146,7 @@ export default function TimePage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<TimePoint | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -166,7 +168,37 @@ export default function TimePage() {
       setTimePoints(data.data ?? []);
       setTotal(data.total ?? 0);
     } catch {
-      toast.error("Failed to load time periods");
+      // API migration pending — fall back to time periods generated via
+      // Settings → Time Periods Auto-Generate (stored in localStorage).
+      try {
+        const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_time_periods") : null;
+        if (raw) {
+          const periods = JSON.parse(raw) as Array<{
+            code: string; name: string; type: string; fiscalYear: number;
+            startDate: string; endDate: string; parentCode: string | null;
+            monthIndex?: number; quarterIndex?: number;
+          }>;
+          const mapped: TimePoint[] = periods.map((p, i) => ({
+            id: `local-${p.code}`,
+            code: p.code,
+            name: p.name,
+            periodType: p.type,
+            fiscalYear: p.fiscalYear,
+            fiscalPeriod: p.monthIndex != null ? p.monthIndex + 1 : (p.quarterIndex ?? null),
+            startDate: p.startDate,
+            endDate: p.endDate,
+            parentId: null,
+            sortOrder: i,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          }));
+          setTimePoints(mapped);
+          setTotal(mapped.length);
+          toast.success(`Loaded ${mapped.length} periods from Settings (browser cache).`);
+          return;
+        }
+      } catch { /* ignore */ }
+      toast.error("Failed to load time periods. Go to Settings → Time Periods Auto-Generate to seed them.");
     } finally {
       setLoading(false);
     }
@@ -276,7 +308,7 @@ export default function TimePage() {
       <MetadataHeader
         title="Time Periods"
         subtitle={`${total.toLocaleString()} periods`}
-        onAdd={openAdd}
+        onAdd={() => setV2DialogOpen(true)}
         addLabel="Add Period"
         onExport={handleExport}
         onRefresh={fetchTimePoints}
@@ -579,6 +611,14 @@ export default function TimePage() {
           </div>
         </div>
       )}
+
+      {/* v2 Add Time Period dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="time"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchTimePoints()}
+      />
     </>
   );
 }

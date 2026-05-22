@@ -9,7 +9,9 @@ import {
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
+import { HierarchyTreeView } from "@/components/metadata/v2/HierarchyTreeView";
 import { AccountForm } from "@/components/metadata/AccountForm";
+import { AddAccountDialog } from "@/components/metadata/v2/AddAccountDialog";
 import { cn } from "@/lib/utils";
 
 interface Account {
@@ -291,10 +293,32 @@ export default function AccountsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<Account | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [behaviorEditId, setBehaviorEditId] = useState<string | null>(null);
   const PAGE_SIZE = 20;
+
+  // Map a v2 dimension_member row to the page's existing Account shape.
+  const mapV2 = (m: any): Account => (({
+    id: m.id,
+    code: m.memberCode,
+    name: m.memberName,
+    type: m.properties?.account_type ?? "EXPENSE",
+    parentId: null,
+    reportingGroup: m.properties?.reporting_group ?? null,
+    aggregationType: m.properties?.aggregation_type ?? "SUM",
+    flowType: m.properties?.time_balance ?? "BALANCE",
+    signBehavior: m.properties?.switch_sign ? "REVERSED" : "NORMAL",
+    currencyType: m.properties?.currency_behavior ?? "TRANSACTIONAL",
+    allowInput: m.properties?.allow_input ?? true,
+    isCalculated: m.calculationType === "FORMULA",
+    formula: m.formula ?? null,
+    isActive: m.isActive,
+    sortOrder: m.sortOrder ?? 0,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+  }) as unknown as Account);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -302,6 +326,17 @@ export default function AccountsPage() {
       const params = new URLSearchParams({
         page: String(page), pageSize: String(PAGE_SIZE), search, sortBy: sortKey, sortDir,
       });
+      // Try v2 first
+      const v2res = await fetch(`/api/v2/members/account?${params}`, { credentials: "include" });
+      if (v2res.ok) {
+        const v2data = await v2res.json();
+        const mapped = (v2data?.data?.data ?? []).map(mapV2);
+        setAccounts(mapped);
+        setTotal(v2data?.data?.total ?? mapped.length);
+        setTreeData(buildTree(mapped));
+        return;
+      }
+      // Fall back to legacy
       const res = await fetch(`/api/metadata/accounts?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -371,7 +406,7 @@ export default function AccountsPage() {
       <MetadataHeader
         title="Chart of Accounts"
         subtitle={`${total.toLocaleString()} accounts`}
-        onAdd={() => { setEditRecord(null); setFormOpen(true); }}
+        onAdd={() => { setEditRecord(null); setV2DialogOpen(true); }}
         addLabel="Add Account"
         onExport={handleExport}
         onRefresh={fetchAccounts}
@@ -546,24 +581,13 @@ export default function AccountsPage() {
           </div>
         )}
 
-        {/* Tree view */}
+        {/* Tree view — OneStream/EPM-style expandable, fed by /api/v2/hierarchy */}
         {tab === "tree" && (
-          <MetadataTree
-            nodes={treeData}
-            onEdit={(node) => {
-              const account = accounts.find((a) => a.id === node.id);
-              if (account) { setEditRecord(account); setFormOpen(true); }
-            }}
-            onDelete={(node) => {
-              const account = accounts.find((a) => a.id === node.id);
-              if (account) handleDelete(account);
-            }}
-            onAdd={() => { setEditRecord(null); setFormOpen(true); }}
-          />
+          <HierarchyTreeView dimensionSlug="account" hierarchyCode="default" />
         )}
       </main>
 
-      {/* Form modal */}
+      {/* Legacy edit modal (kept until Slice 3.2 ships v2 edit dialog) */}
       {formOpen && (
         <AccountForm
           account={editRecord}
@@ -572,6 +596,13 @@ export default function AccountsPage() {
           onClose={() => { setFormOpen(false); setEditRecord(null); }}
         />
       )}
+
+      {/* v2 Add Account dialog (Slice 3.1) — typed properties, posts to /api/v2/members/account */}
+      <AddAccountDialog
+        open={v2DialogOpen}
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchAccounts()}
+      />
     </>
   );
 }

@@ -1,0 +1,387 @@
+// ═══════════════════════════════════════════════════════════════════
+// CFO Pilot — Metadata Engine v2 (DRAFT)
+// Locked decisions: 5 always-on dims + ICP toggleable + 8 UDs
+// Status: PROPOSAL — review before replacing schema.prisma
+// Author: epm-architect + engineer  |  Date: 2026-05-21
+// ═══════════════════════════════════════════════════════════════════
+
+// NOTE: This is a DRAFT. It shows the SHAPE of the updated metadata model.
+// Per-dimension property deep-dive happens next. Treat this as the
+// skeleton everyone agrees on, not the final field list.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enumerations (the typed, no-string-magic kind) ───────────────
+
+enum UserRole {
+  ADMIN
+  FINANCE_MANAGER
+  FINANCE_USER
+  VIEWER
+}
+
+// FIX: added STATISTICAL, KPI, NON_FINANCIAL per blueprint §4
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+  STATISTICAL
+  KPI
+  NON_FINANCIAL
+}
+
+// NEW: typed enums for what used to be string fields
+enum TimeBalance {
+  FLOW      // P&L-style: sum across periods
+  LAST      // Balance sheet: take period-end value
+  FIRST     // Period-open value
+  AVG       // Average across period
+}
+
+enum AggregationOperator {
+  ADD       // "+"
+  SUBTRACT  // "-"
+  IGNORE    // "~"
+}
+
+enum StorageType {
+  STORED        // input or imported, lives in fact table
+  DYNAMIC       // calculated on read
+  NEVER_SHARE   // calculated but not allowed as shared member
+}
+
+enum CalculationType {
+  INPUT
+  FORMULA
+  ROLLUP
+}
+
+enum VarianceType {
+  EXPENSE       // Actual > Budget = unfavourable
+  NON_EXPENSE   // Actual > Budget = favourable
+  NEUTRAL
+}
+
+enum CurrencyBehavior {
+  TRANSACTIONAL  // translate using account's rate type
+  TRANSLATED     // already in reporting currency
+  NONE           // statistical/non-financial, no translation
+}
+
+enum ConsolidationMethod {
+  FULL
+  PROPORTIONAL
+  EQUITY
+  NONE
+}
+
+enum ScenarioType {
+  ACTUAL
+  BUDGET
+  FORECAST
+  WHATIF
+}
+
+enum TimePeriodType {
+  MONTH
+  QUARTER
+  HALF
+  YEAR
+}
+
+enum DimensionKind {
+  // Always-on (5)
+  ACCOUNT
+  ENTITY
+  SCENARIO
+  TIME
+  CURRENCY
+  // Toggleable (1)
+  ICP
+  // Customer-defined slots (8)
+  UD1
+  UD2
+  UD3
+  UD4
+  UD5
+  UD6
+  UD7
+  UD8
+}
+
+// ─── Core Tenant + Users ─────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  features        TenantFeature[]
+  dimensions      Dimension[]
+  members         DimensionMember[]
+  hierarchies     Hierarchy[]
+  hierarchyEdges  HierarchyEdge[]
+  currencies      CurrencyRef[]     // per-tenant active list, seeded from CurrencyCatalog
+  auditLogs       AuditLog[]
+
+  @@index([slug])
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  name         String
+  passwordHash String
+  role         UserRole  @default(FINANCE_USER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─── Feature flags (drives which dims/modules are enabled) ────────
+
+model TenantFeature {
+  id          String   @id @default(uuid())
+  tenantId    String
+  featureKey  String   // e.g. multi_entity_enabled, intercompany_enabled
+  isEnabled   Boolean  @default(false)
+  enabledAt   DateTime?
+  enabledBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureKey])
+  @@index([tenantId])
+  @@map("tenant_features")
+}
+
+// Known feature keys (validated in app layer):
+//   multi_entity_enabled           (default false)
+//   multi_currency_enabled         (default false)
+//   intercompany_enabled           (default false)  -> turns on ICP dim
+//   alternate_hierarchy_enabled    (default true)
+//   department_enabled             (default true)   -> reserves a UD slot
+//   cost_center_enabled            (default false)
+//   project_enabled                (default false)
+
+// ─── Dimension Definitions ────────────────────────────────────────
+
+model Dimension {
+  id           String        @id @default(uuid())
+  tenantId     String
+  kind         DimensionKind                  // ACCOUNT, ENTITY, ... UD1..UD8
+  code         String                          // 'account', 'entity', or for UDs e.g. 'doctor'
+  label        String                          // display name e.g. "Doctor"
+  description  String?
+  isEnabled    Boolean       @default(true)    // toggled off via tenant feature flags
+  isCustom     Boolean       @default(false)   // true for UD1..UD8 when user names them
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     DimensionMember[]
+  hierarchies Hierarchy[]
+
+  @@unique([tenantId, kind])
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("dimensions")
+}
+
+// ─── Dimension Members (the actual rows like accounts, entities) ──
+// One generic table holds every member, regardless of dimension.
+// Dimension-specific properties go into typed JSON `properties` until
+// we promote heavily-used fields into columns in v2.1.
+
+model DimensionMember {
+  id          String   @id @default(uuid())
+  tenantId    String
+  dimensionId String
+  memberCode  String                          // e.g. account_code, entity_code
+  memberName  String
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  // Typed common fields used across dims (filled when relevant)
+  storageType     StorageType?
+  calculationType CalculationType?
+  formula         String?
+  // Dimension-specific properties bag — narrowed by Zod in app
+  // For Account: accountType, timeBalance, switchSign, varianceType, currencyBehavior, allowInput
+  // For Entity:  baseCurrency, consolidationMethod, ownershipPct, icpEnabled, country
+  // For Scenario: scenarioType, isFrozen, version, startPeriod, endPeriod
+  // For Time:    periodType, fiscalYear, parentCode
+  // For Currency: ref to CurrencyCatalog (iso_code)
+  // For ICP:     entityId (link back to Entity member)
+  // For UD1..8:  free-form per tenant
+  properties  Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dimension Dimension @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+
+  parentEdges HierarchyEdge[] @relation("ChildEdges")
+  childEdges  HierarchyEdge[] @relation("ParentEdges")
+
+  @@unique([tenantId, dimensionId, memberCode])
+  @@index([tenantId, dimensionId])
+  @@index([tenantId, isActive])
+  @@map("dimension_members")
+}
+
+// ─── Hierarchies (SEPARATE table — supports alternate hierarchies,
+//      shared members, cycle detection, effective dating)
+
+model Hierarchy {
+  id              String   @id @default(uuid())
+  tenantId        String
+  dimensionId     String
+  code            String                          // 'default', 'statutory', 'management'
+  name            String
+  description     String?
+  isPrimary       Boolean  @default(false)        // exactly one per dimension
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dimension Dimension       @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+  edges     HierarchyEdge[]
+
+  @@unique([tenantId, dimensionId, code])
+  @@index([tenantId, dimensionId])
+  @@map("hierarchies")
+}
+
+model HierarchyEdge {
+  id            String              @id @default(uuid())
+  tenantId      String
+  hierarchyId   String
+  parentMemberId String
+  childMemberId  String
+  operator      AggregationOperator @default(ADD)
+  weight        Decimal             @default(1) @db.Decimal(10, 6)
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hierarchy Hierarchy        @relation(fields: [hierarchyId], references: [id], onDelete: Cascade)
+  parent    DimensionMember  @relation("ParentEdges", fields: [parentMemberId], references: [id], onDelete: Cascade)
+  child     DimensionMember  @relation("ChildEdges",  fields: [childMemberId],  references: [id], onDelete: Cascade)
+
+  // Cycle detection enforced in app layer (recursive CTE check on insert).
+  // Shared members supported by allowing the same child under multiple parents
+  // within the same hierarchy (uniqueness is on the edge, not the child).
+
+  @@unique([tenantId, hierarchyId, parentMemberId, childMemberId])
+  @@index([tenantId, hierarchyId])
+  @@index([tenantId, parentMemberId])
+  @@index([tenantId, childMemberId])
+  @@map("hierarchy_edges")
+}
+
+// ─── Currency Catalog (seeded with ISO 4217) ──────────────────────
+
+model CurrencyCatalog {
+  isoCode    String  @id          // "USD", "EUR", "INR", ...
+  name       String                // "US Dollar"
+  symbol     String                // "$"
+  decimals   Int     @default(2)
+  isActive   Boolean @default(true)
+  // 180+ rows seeded via prisma/seed.ts on first migrate
+
+  @@map("currency_catalog")
+}
+
+// Per-tenant active currency list (which currencies this tenant uses)
+model CurrencyRef {
+  id        String   @id @default(uuid())
+  tenantId  String
+  isoCode   String   // FK to CurrencyCatalog
+  isBase    Boolean  @default(false)   // exactly one base per tenant
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, isoCode])
+  @@index([tenantId])
+  @@map("currency_refs")
+}
+
+// ─── Audit Log (every metadata change) ────────────────────────────
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  EXPORT
+  BULK_UPDATE
+  ENABLE_FEATURE
+  DISABLE_FEATURE
+  APPROVE
+  REJECT
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     AuditAction
+  entityType String                      // 'dimension_member', 'hierarchy_edge', 'tenant_feature'
+  entityId   String?
+  before     Json?
+  after      Json?
+  metadata   Json?                       // e.g. import_job_id, source_row_id
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WHAT'S INTENTIONALLY NOT IN THIS DRAFT (deferred per Faizan):
+//   - fact tables (no calc/data load yet)
+//   - mapping rules (next slice)
+//   - FX rates table (only if multi_currency_enabled flips on)
+//   - import jobs (next slice — once metadata is locked)
+//   - Postgres RLS policies (separate migration after schema lock)
+// ═══════════════════════════════════════════════════════════════════

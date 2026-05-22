@@ -1,7 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
-// CFO Pilot — Generic EPM Metadata Engine
-// Production PostgreSQL Schema  |  Multi-tenant  |  Audit-ready
+// CFO Pilot — Metadata Engine v2 (DRAFT)
+// Locked decisions: 5 always-on dims + ICP toggleable + 8 UDs
+// Status: PROPOSAL — review before replacing schema.prisma
+// Author: epm-architect + engineer  |  Date: 2026-05-21
 // ═══════════════════════════════════════════════════════════════════
+
+// NOTE: This is a DRAFT. It shows the SHAPE of the updated metadata model.
+// Per-dimension property deep-dive happens next. Treat this as the
+// skeleton everyone agrees on, not the final field list.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,7 +18,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enumerations ────────────────────────────────────────────────
+// ─── Enumerations (the typed, no-string-magic kind) ───────────────
 
 enum UserRole {
   ADMIN
@@ -21,13 +27,320 @@ enum UserRole {
   VIEWER
 }
 
+// FIX: added STATISTICAL, KPI, NON_FINANCIAL per blueprint §4
 enum AccountType {
   ASSET
   LIABILITY
   EQUITY
   REVENUE
   EXPENSE
+  STATISTICAL
+  KPI
+  NON_FINANCIAL
 }
+
+// NEW: typed enums for what used to be string fields
+enum TimeBalance {
+  FLOW      // P&L-style: sum across periods
+  LAST      // Balance sheet: take period-end value
+  FIRST     // Period-open value
+  AVG       // Average across period
+}
+
+enum AggregationOperator {
+  ADD       // "+"
+  SUBTRACT  // "-"
+  IGNORE    // "~"
+}
+
+enum StorageType {
+  STORED        // input or imported, lives in fact table
+  DYNAMIC       // calculated on read
+  NEVER_SHARE   // calculated but not allowed as shared member
+}
+
+enum CalculationType {
+  INPUT
+  FORMULA
+  ROLLUP
+}
+
+enum VarianceType {
+  EXPENSE       // Actual > Budget = unfavourable
+  NON_EXPENSE   // Actual > Budget = favourable
+  NEUTRAL
+}
+
+enum CurrencyBehavior {
+  TRANSACTIONAL  // translate using account's rate type
+  TRANSLATED     // already in reporting currency
+  NONE           // statistical/non-financial, no translation
+}
+
+enum ConsolidationMethod {
+  FULL
+  PROPORTIONAL
+  EQUITY
+  NONE
+}
+
+enum ScenarioType {
+  ACTUAL
+  BUDGET
+  FORECAST
+  WHATIF
+}
+
+enum TimePeriodType {
+  MONTH
+  QUARTER
+  HALF
+  YEAR
+}
+
+enum DimensionKind {
+  // Always-on (5)
+  ACCOUNT
+  ENTITY
+  SCENARIO
+  TIME
+  CURRENCY
+  // Toggleable (1)
+  ICP
+  // Customer-defined slots (8)
+  UD1
+  UD2
+  UD3
+  UD4
+  UD5
+  UD6
+  UD7
+  UD8
+}
+
+// ─── Core Tenant + Users ─────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  features        TenantFeature[]
+  dimensions      Dimension[]
+  members         DimensionMember[]
+  hierarchies     Hierarchy[]
+  hierarchyEdges  HierarchyEdge[]
+  currencies      CurrencyRef[]     // per-tenant active list, seeded from CurrencyCatalog
+  auditLogs       AuditLog[]
+
+  @@index([slug])
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  name         String
+  passwordHash String
+  role         UserRole  @default(FINANCE_USER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─── Feature flags (drives which dims/modules are enabled) ────────
+
+model TenantFeature {
+  id          String   @id @default(uuid())
+  tenantId    String
+  featureKey  String   // e.g. multi_entity_enabled, intercompany_enabled
+  isEnabled   Boolean  @default(false)
+  enabledAt   DateTime?
+  enabledBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureKey])
+  @@index([tenantId])
+  @@map("tenant_features")
+}
+
+// Known feature keys (validated in app layer):
+//   multi_entity_enabled           (default false)
+//   multi_currency_enabled         (default false)
+//   intercompany_enabled           (default false)  -> turns on ICP dim
+//   alternate_hierarchy_enabled    (default true)
+//   department_enabled             (default true)   -> reserves a UD slot
+//   cost_center_enabled            (default false)
+//   project_enabled                (default false)
+
+// ─── Dimension Definitions ────────────────────────────────────────
+
+model Dimension {
+  id           String        @id @default(uuid())
+  tenantId     String
+  kind         DimensionKind                  // ACCOUNT, ENTITY, ... UD1..UD8
+  code         String                          // 'account', 'entity', or for UDs e.g. 'doctor'
+  label        String                          // display name e.g. "Doctor"
+  description  String?
+  isEnabled    Boolean       @default(true)    // toggled off via tenant feature flags
+  isCustom     Boolean       @default(false)   // true for UD1..UD8 when user names them
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     DimensionMember[]
+  hierarchies Hierarchy[]
+
+  @@unique([tenantId, kind])
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("dimensions")
+}
+
+// ─── Dimension Members (the actual rows like accounts, entities) ──
+// One generic table holds every member, regardless of dimension.
+// Dimension-specific properties go into typed JSON `properties` until
+// we promote heavily-used fields into columns in v2.1.
+
+model DimensionMember {
+  id          String   @id @default(uuid())
+  tenantId    String
+  dimensionId String
+  memberCode  String                          // e.g. account_code, entity_code
+  memberName  String
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  // Typed common fields used across dims (filled when relevant)
+  storageType     StorageType?
+  calculationType CalculationType?
+  formula         String?
+  // Dimension-specific properties bag — narrowed by Zod in app
+  // For Account: accountType, timeBalance, switchSign, varianceType, currencyBehavior, allowInput
+  // For Entity:  baseCurrency, consolidationMethod, ownershipPct, icpEnabled, country
+  // For Scenario: scenarioType, isFrozen, version, startPeriod, endPeriod
+  // For Time:    periodType, fiscalYear, parentCode
+  // For Currency: ref to CurrencyCatalog (iso_code)
+  // For ICP:     entityId (link back to Entity member)
+  // For UD1..8:  free-form per tenant
+  properties  Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dimension Dimension @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+
+  parentEdges HierarchyEdge[] @relation("ChildEdges")
+  childEdges  HierarchyEdge[] @relation("ParentEdges")
+
+  @@unique([tenantId, dimensionId, memberCode])
+  @@index([tenantId, dimensionId])
+  @@index([tenantId, isActive])
+  @@map("dimension_members")
+}
+
+// ─── Hierarchies (SEPARATE table — supports alternate hierarchies,
+//      shared members, cycle detection, effective dating)
+
+model Hierarchy {
+  id              String   @id @default(uuid())
+  tenantId        String
+  dimensionId     String
+  code            String                          // 'default', 'statutory', 'management'
+  name            String
+  description     String?
+  isPrimary       Boolean  @default(false)        // exactly one per dimension
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dimension Dimension       @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+  edges     HierarchyEdge[]
+
+  @@unique([tenantId, dimensionId, code])
+  @@index([tenantId, dimensionId])
+  @@map("hierarchies")
+}
+
+model HierarchyEdge {
+  id            String              @id @default(uuid())
+  tenantId      String
+  hierarchyId   String
+  parentMemberId String
+  childMemberId  String
+  operator      AggregationOperator @default(ADD)
+  weight        Decimal             @default(1) @db.Decimal(10, 6)
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hierarchy Hierarchy        @relation(fields: [hierarchyId], references: [id], onDelete: Cascade)
+  parent    DimensionMember  @relation("ParentEdges", fields: [parentMemberId], references: [id], onDelete: Cascade)
+  child     DimensionMember  @relation("ChildEdges",  fields: [childMemberId],  references: [id], onDelete: Cascade)
+
+  // Cycle detection enforced in app layer (recursive CTE check on insert).
+  // Shared members supported by allowing the same child under multiple parents
+  // within the same hierarchy (uniqueness is on the edge, not the child).
+
+  @@unique([tenantId, hierarchyId, parentMemberId, childMemberId])
+  @@index([tenantId, hierarchyId])
+  @@index([tenantId, parentMemberId])
+  @@index([tenantId, childMemberId])
+  @@map("hierarchy_edges")
+}
+
+// ─── Currency Catalog (seeded with ISO 4217) ──────────────────────
+
+model CurrencyCatalog {
+  isoCode    String  @id          // "USD", "EUR", "INR", ...
+  name       String                // "US Dollar"
+  symbol     String                // "$"
+  decimals   Int     @default(2)
+  isActive   Boolean @default(true)
+  // 180+ rows seeded via prisma/seed.ts on first migrate
+
+  @@map("currency_catalog")
+}
+
+// Per-tenant active currency list (which currencies this tenant uses)
+model CurrencyRef {
+  id        String   @id @default(uuid())
+  tenantId  String
+  isoCode   String   // FK to CurrencyCatalog
+  isBase    Boolean  @default(false)   // exactly one base per tenant
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, isoCode])
+  @@index([tenantId])
+  @@map("currency_refs")
+}
+
+// ─── Audit Log (every metadata change) ────────────────────────────
 
 enum AuditAction {
   CREATE
@@ -35,519 +348,42 @@ enum AuditAction {
   DELETE
   IMPORT
   EXPORT
-  LOGIN
   BULK_UPDATE
+  ENABLE_FEATURE
+  DISABLE_FEATURE
+  APPROVE
+  REJECT
+  LOGIN
+  LOGOUT
 }
-
-enum ImportStatus {
-  PENDING
-  VALIDATING
-  VALIDATION_FAILED
-  VALIDATION_PASSED
-  IMPORTING
-  COMPLETED
-  FAILED
-}
-
-enum DimensionType {
-  ACCOUNT
-  ENTITY
-  DEPARTMENT
-  COST_CENTER
-  SCENARIO
-  CURRENCY
-  TIME
-  ICP
-  PROJECT
-  USER_DEFINED
-}
-
-enum TenantPlan {
-  STARTER
-  PROFESSIONAL
-  ENTERPRISE
-}
-
-enum ErrorSeverity {
-  ERROR
-  WARNING
-  INFO
-}
-
-// ─── Core Tables ─────────────────────────────────────────────────
-
-model Tenant {
-  id          String     @id @default(uuid())
-  name        String
-  slug        String     @unique
-  plan        TenantPlan @default(PROFESSIONAL)
-  isActive    Boolean    @default(true)
-  maxUsers    Int        @default(50)
-  settings    Json       @default("{}")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  users            User[]
-  accounts         Account[]
-  entities         Entity[]
-  departments      Department[]
-  costCenters      CostCenter[]
-  currencies       Currency[]
-  fxRates          FxRate[]
-  scenarios        Scenario[]
-  timePoints       TimePoint[]
-  auditLogs        AuditLog[]
-  importJobs       ImportJob[]
-  icps             ICP[]
-  projects         Project[]
-  dimensionDefs    DimensionDefinition[]
-  dimensionMembers DimensionMember[]
-  tenantSettings   TenantSettings?
-
-  @@index([slug])
-  @@map("tenants")
-}
-
-model User {
-  id           String   @id @default(uuid())
-  tenantId     String
-  email        String
-  name         String
-  passwordHash String
-  role         UserRole @default(FINANCE_USER)
-  isActive     Boolean  @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  auditLogs AuditLog[]
-
-  @@unique([tenantId, email])
-  @@index([tenantId])
-  @@index([email])
-  @@map("users")
-}
-
-// ─── Account Dimension ───────────────────────────────────────────
-
-model Account {
-  id              String      @id @default(uuid())
-  tenantId        String
-  accountCode     String
-  accountName     String
-  accountType     AccountType
-  parentId        String?
-  reportingGroup  String?
-  description     String?
-  aggregationType String      @default("SUM")           // SUM, AVERAGE, LAST_VALUE, WEIGHTED_AVG, NONE
-  flowType        String      @default("BALANCE")        // BALANCE, FLOW
-  signBehavior    String      @default("NORMAL")         // NORMAL, REVERSED
-  currencyType    String      @default("TRANSACTIONAL")  // TRANSACTIONAL, TRANSLATED, NONE
-  allowInput      Boolean     @default(true)
-  isCalculated    Boolean     @default(false)
-  formula         String?
-  isActive        Boolean     @default(true)
-  sortOrder       Int         @default(0)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  createdBy       String?
-  updatedBy       String?
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children Account[] @relation("AccountHierarchy")
-
-  @@unique([tenantId, accountCode])
-  @@index([tenantId])
-  @@index([tenantId, accountType])
-  @@index([tenantId, parentId])
-  @@index([tenantId, isActive])
-  @@map("accounts")
-}
-
-// ─── Entity Dimension ─────────────────────────────────────────────
-
-model Entity {
-  id                  String   @id @default(uuid())
-  tenantId            String
-  entityCode          String
-  entityName          String
-  parentId            String?
-  ownershipPercentage Decimal? @db.Decimal(5, 2)
-  baseCurrency        String   @default("USD")
-  country             String?
-  taxId               String?
-  address             String?
-  consolidationMethod String   @default("FULL")  // FULL, PROPORTIONAL, EQUITY, NONE
-  eliminationFlag     Boolean  @default(false)
-  isActive            Boolean  @default(true)
-  sortOrder           Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  createdBy           String?
-  updatedBy           String?
-
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent      Entity?      @relation("EntityHierarchy", fields: [parentId], references: [id])
-  children    Entity[]     @relation("EntityHierarchy")
-  departments Department[]
-  costCenters CostCenter[]
-
-  @@unique([tenantId, entityCode])
-  @@index([tenantId])
-  @@index([tenantId, parentId])
-  @@index([tenantId, isActive])
-  @@map("entities")
-}
-
-// ─── Department Dimension ─────────────────────────────────────────
-
-model Department {
-  id             String   @id @default(uuid())
-  tenantId       String
-  departmentCode String
-  departmentName String
-  parentId       String?
-  entityId       String?
-  managerId      String?
-  costType       String?
-  description    String?
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  createdBy      String?
-  updatedBy      String?
-
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent      Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
-  children    Department[] @relation("DeptHierarchy")
-  entity      Entity?      @relation(fields: [entityId], references: [id])
-  costCenters CostCenter[]
-
-  @@unique([tenantId, departmentCode])
-  @@index([tenantId])
-  @@index([tenantId, parentId])
-  @@index([tenantId, entityId])
-  @@map("departments")
-}
-
-// ─── Cost Center Dimension ────────────────────────────────────────
-
-model CostCenter {
-  id             String   @id @default(uuid())
-  tenantId       String
-  costCenterCode String
-  costCenterName String
-  parentId       String?
-  departmentId   String?
-  entityId       String?
-  costType       String?
-  budget         Decimal? @db.Decimal(18, 2)
-  currency       String   @default("USD")
-  description    String?
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  createdBy      String?
-  updatedBy      String?
-
-  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent     CostCenter?  @relation("CCHierarchy", fields: [parentId], references: [id])
-  children   CostCenter[] @relation("CCHierarchy")
-  department Department?  @relation(fields: [departmentId], references: [id])
-  entity     Entity?      @relation(fields: [entityId], references: [id])
-
-  @@unique([tenantId, costCenterCode])
-  @@index([tenantId])
-  @@index([tenantId, parentId])
-  @@index([tenantId, departmentId])
-  @@map("cost_centers")
-}
-
-// ─── Currency Dimension ───────────────────────────────────────────
-
-model Currency {
-  id           String   @id @default(uuid())
-  tenantId     String
-  code         String
-  name         String
-  symbol       String
-  exchangeRate Decimal  @default(1) @db.Decimal(18, 6)
-  isBase       Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@map("currencies")
-}
-
-// ─── Scenario Dimension ───────────────────────────────────────────
-
-model Scenario {
-  id           String   @id @default(uuid())
-  tenantId     String
-  scenarioCode String
-  scenarioName String
-  scenarioType String   @default("BUDGET")
-  fiscalYear   Int
-  description  String?
-  isLocked     Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, scenarioCode])
-  @@index([tenantId])
-  @@map("scenarios")
-}
-
-// ─── Time Dimension ───────────────────────────────────────────────
-
-model TimePoint {
-  id           String    @id @default(uuid())
-  tenantId     String
-  code         String
-  name         String
-  periodType   String    @default("MONTH") // YEAR, QUARTER, MONTH, WEEK, DAY
-  fiscalYear   Int
-  fiscalPeriod Int?
-  startDate    DateTime
-  endDate      DateTime
-  parentId     String?
-  isActive     Boolean   @default(true)
-  sortOrder    Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent   TimePoint?  @relation("TimeHierarchy", fields: [parentId], references: [id])
-  children TimePoint[] @relation("TimeHierarchy")
-
-  @@unique([tenantId, code])
-  @@index([tenantId])
-  @@index([tenantId, fiscalYear])
-  @@index([tenantId, periodType])
-  @@map("time_points")
-}
-
-// ─── Audit Log ────────────────────────────────────────────────────
 
 model AuditLog {
-  id            String         @id @default(uuid())
-  tenantId      String
-  tableName     String
-  recordId      String
-  dimensionType DimensionType?
-  action        AuditAction
-  oldValue      Json?
-  newValue      Json?
-  changedFields String[]       @default([])
-  userId        String?
-  userName      String?
-  userEmail     String?
-  userRole      String?
-  ipAddress     String?
-  userAgent     String?
-  metadata      Json?
-  createdAt     DateTime       @default(now())
+  id         String      @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     AuditAction
+  entityType String @default("legacy")   // 'dimension_member', 'hierarchy_edge', 'tenant_feature' — default lets push backfill old rows
+  entityId   String?
+  before     Json?
+  after      Json?
+  metadata   Json?                       // e.g. import_job_id, source_row_id
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
 
-  @@index([tenantId])
-  @@index([tenantId, tableName])
-  @@index([tenantId, recordId])
-  @@index([tenantId, createdAt(sort: Desc)])
-  @@index([tenantId, userId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
   @@map("audit_logs")
 }
 
-// ─── Import Job ───────────────────────────────────────────────────
-
-model ImportJob {
-  id               String        @id @default(uuid())
-  tenantId         String
-  fileName         String
-  originalFileName String?
-  fileSize         Int?
-  dimensionType    DimensionType
-  status           ImportStatus  @default(PENDING)
-  totalRows        Int           @default(0)
-  totalRecords     Int           @default(0)
-  processedRows    Int           @default(0)
-  successRows      Int           @default(0)
-  errorRows        Int           @default(0)
-  validRecords     Int           @default(0)
-  invalidRecords   Int           @default(0)
-  importedRecords  Int           @default(0)
-  previewData      Json?
-  validationReport Json?
-  errors           Json          @default("[]")
-  warnings         Json          @default("[]")
-  uploadedBy       String?
-  createdBy        String?
-  createdByName    String?
-  startedAt        DateTime?
-  completedAt      DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([tenantId, status])
-  @@index([tenantId, dimensionType])
-  @@map("import_jobs")
-}
-
-// ─── ICP Dimension ─────────────────────────────────────────────
-model ICP {
-  id          String   @id @default(uuid())
-  tenantId    String
-  icpCode     String
-  icpName     String
-  entityId    String?
-  description String?
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, icpCode])
-  @@index([tenantId])
-  @@map("icps")
-}
-
-// ─── Project Dimension ────────────────────────────────────────
-model Project {
-  id          String    @id @default(uuid())
-  tenantId    String
-  projectCode String
-  projectName String
-  parentId    String?
-  entityId    String?
-  description String?
-  startDate   DateTime?
-  endDate     DateTime?
-  budget      Decimal?  @db.Decimal(18, 2)
-  currency    String    @default("USD")
-  status      String    @default("ACTIVE")
-  isActive    Boolean   @default(true)
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  createdBy   String?
-  updatedBy   String?
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent   Project?  @relation("ProjectHierarchy", fields: [parentId], references: [id])
-  children Project[] @relation("ProjectHierarchy")
-
-  @@unique([tenantId, projectCode])
-  @@index([tenantId])
-  @@map("projects")
-}
-
-// ─── User Defined Dimension Definitions ──────────────────────
-model DimensionDefinition {
-  id          String   @id @default(uuid())
-  tenantId    String
-  slot        String   // "UD1" to "UD10"
-  name        String   // user-given name e.g. "Product", "Region"
-  pluralName  String?  // e.g. "Products"
-  description String?
-  iconName    String   @default("Layers")
-  color       String   @default("text-gray-600")
-  bgColor     String   @default("bg-gray-50")
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  members DimensionMember[]
-
-  @@unique([tenantId, slot])
-  @@index([tenantId])
-  @@map("dimension_definitions")
-}
-
-// ─── Generic Member for User Defined Dimensions ──────────────
-model DimensionMember {
-  id          String   @id @default(uuid())
-  tenantId    String
-  dimensionId String
-  code        String
-  name        String
-  parentId    String?
-  description String?
-  properties  Json     @default("{}")
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  dimension DimensionDefinition @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
-  parent    DimensionMember?    @relation("MemberHierarchy", fields: [parentId], references: [id])
-  children  DimensionMember[]   @relation("MemberHierarchy")
-
-  @@unique([tenantId, dimensionId, code])
-  @@index([tenantId, dimensionId])
-  @@index([tenantId, dimensionId, parentId])
-  @@map("dimension_members")
-}
-
-// ─── FX Rates ─────────────────────────────────────────────────
-model FxRate {
-  id            String   @id @default(uuid())
-  tenantId      String
-  fromCurrency  String   // e.g. "USD"
-  toCurrency    String   // e.g. "INR"
-  rate          Decimal  @db.Decimal(18, 6)
-  effectiveDate DateTime @db.Date
-  source        String   @default("MANUAL")  // MANUAL, MARKET, IMPORTED
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, fromCurrency, toCurrency, effectiveDate])
-  @@index([tenantId])
-  @@index([tenantId, fromCurrency, toCurrency])
-  @@index([tenantId, effectiveDate(sort: Desc)])
-  @@map("fx_rates")
-}
-
-// ─── Tenant App Settings ──────────────────────────────────────
-model TenantSettings {
-  id                String   @id @default(uuid())
-  tenantId          String   @unique
-  appName           String   @default("CFO Pilot")
-  reportingCurrency String   @default("USD")
-  fiscalYearStart   Int      @default(1)   // month 1-12
-  dateFormat        String   @default("YYYY-MM-DD")
-  numberFormat      String   @default("1,234.56")
-  timezone          String   @default("UTC")
-  logoUrl           String?
-  primaryColor      String   @default("#6366f1")
-  isSetupComplete   Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@map("tenant_settings")
-}
+// ═══════════════════════════════════════════════════════════════════
+// WHAT'S INTENTIONALLY NOT IN THIS DRAFT (deferred per Faizan):
+//   - fact tables (no calc/data load yet)
+//   - mapping rules (next slice)
+//   - FX rates table (only if multi_currency_enabled flips on)
+//   - import jobs (next slice — once metadata is locked)
+//   - Postgres RLS policies (separate migration after schema lock)
+// ═══════════════════════════════════════════════════════════════════

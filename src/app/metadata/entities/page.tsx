@@ -10,6 +10,8 @@ import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { DimensionTable, Column } from "@/components/metadata/DimensionTable";
 import { MetadataTree, TreeNode } from "@/components/metadata/MetadataTree";
 import { EntityForm } from "@/components/metadata/EntityForm";
+import { AddMemberDialog } from "@/components/metadata/v2/AddMemberDialog";
+import { HierarchyTreeView as V2Tree } from "@/components/metadata/v2/HierarchyTreeView";
 import { cn } from "@/lib/utils";
 
 type ConsolidationMethod = "FULL" | "PROPORTIONAL" | "EQUITY" | "NONE";
@@ -175,6 +177,7 @@ export default function EntitiesPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [v2DialogOpen, setV2DialogOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<Entity | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [consolEditId, setConsolEditId] = useState<string | null>(null);
@@ -186,6 +189,34 @@ export default function EntitiesPage() {
       const params = new URLSearchParams({
         page: String(page), pageSize: String(PAGE_SIZE), search, sortBy: sortKey, sortDir,
       });
+      // Try v2 first
+      const v2res = await fetch(`/api/v2/members/entity?${params}`, { credentials: "include" });
+      if (v2res.ok) {
+        const v2 = await v2res.json();
+        // Map v2 dimension_member → Entity shape used by this legacy page.
+        // Inlined because the helper was lost in the v2 schema migration;
+        // legacy page is being replaced by /metadata/library — temporary glue.
+        const mapV2Entity = (m: any): Entity => ({
+          id: m.id,
+          code: m.memberCode,
+          name: m.memberName,
+          parentId: null,
+          baseCurrency:        m.properties?.base_currency        ?? "USD",
+          consolidationMethod: m.properties?.consolidation_method ?? "FULL",
+          ownershipPct:        m.properties?.ownership_pct        ?? 100,
+          country:             m.properties?.country              ?? null,
+          taxId:               m.properties?.tax_id               ?? null,
+          icpEnabled:          m.properties?.icp_enabled          ?? false,
+          isActive: m.isActive,
+          sortOrder: m.sortOrder ?? 0,
+        } as unknown as Entity);
+        const mapped = (v2?.data?.data ?? []).map(mapV2Entity);
+        setEntities(mapped);
+        setTotal(v2?.data?.total ?? mapped.length);
+        setTreeData(buildTree(mapped));
+        return;
+      }
+      // Fall back to legacy
       const res = await fetch(`/api/metadata/entities?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -420,11 +451,12 @@ export default function EntitiesPage() {
             nodes={treeData}
             onEdit={(node) => { const e = entities.find((x) => x.id === node.id); if (e) { setEditRecord(e); setFormOpen(true); } }}
             onDelete={(node) => { const e = entities.find((x) => x.id === node.id); if (e) handleDelete(e); }}
-            onAdd={() => { setEditRecord(null); setFormOpen(true); }}
+            onAdd={() => { setEditRecord(null); setV2DialogOpen(true); }}
           />
         )}
       </main>
 
+      {/* Legacy edit modal — kept until Slice 3.2 ships v2 edit dialog */}
       {formOpen && (
         <EntityForm
           entity={editRecord}
@@ -433,6 +465,14 @@ export default function EntitiesPage() {
           onClose={() => { setFormOpen(false); setEditRecord(null); }}
         />
       )}
+
+      {/* v2 Add Entity dialog (Slice 3.1b) */}
+      <AddMemberDialog
+        open={v2DialogOpen}
+        dim="entity"
+        onClose={() => setV2DialogOpen(false)}
+        onSaved={() => fetchEntities()}
+      />
     </>
   );
 }

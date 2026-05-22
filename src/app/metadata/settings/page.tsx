@@ -1,20 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Settings, Save, CheckCircle, Globe, Calendar,
   Palette, Clock, Building2, DollarSign, AlertCircle,
+  Layers, ToggleLeft, Wand2, Sparkles,
 } from "lucide-react";
-
-const CURRENCIES_SHORT = [
-  "AED","ARS","AUD","BDT","BHD","BRL","CAD","CHF","CLP","CNY",
-  "COP","CZK","DKK","EGP","EUR","GBP","GHS","HKD","HUF","IDR",
-  "ILS","INR","JOD","JPY","KES","KRW","KWD","LKR","MXN","MYR",
-  "NGN","NOK","NPR","NZD","OMR","PEN","PHP","PKR","PLN","QAR",
-  "RON","RUB","SAR","SEK","SGD","THB","TRY","TWD","UAH","USD",
-  "VND","ZAR",
-];
+import { ISO_4217, ISO_TOP } from "@/lib/iso4217";
+import { FISCAL_YEAR_START_OPTIONS, generateTimePeriods, type TimePeriodNode } from "@/lib/time-periods";
 
 const TIMEZONES = [
   "UTC","Asia/Kolkata","Asia/Singapore","Asia/Dubai","Asia/Bangkok",
@@ -37,6 +31,28 @@ interface Settings {
   isSetupComplete: boolean;
 }
 
+// Feature flags (mirror tenant_features table). LocalStorage-backed for now;
+// task #12 wires the real /api/tenant-features endpoint.
+type FeatureFlags = {
+  multi_entity_enabled: boolean;
+  multi_currency_enabled: boolean;
+  intercompany_enabled: boolean;
+  alternate_hierarchy_enabled: boolean;
+  department_enabled: boolean;
+  cost_center_enabled: boolean;
+  project_enabled: boolean;
+};
+
+const DEFAULT_FLAGS: FeatureFlags = {
+  multi_entity_enabled: false,
+  multi_currency_enabled: false,
+  intercompany_enabled: false,
+  alternate_hierarchy_enabled: true,
+  department_enabled: true,
+  cost_center_enabled: false,
+  project_enabled: false,
+};
+
 export default function AppSettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<Settings>({
@@ -55,6 +71,97 @@ export default function AppSettingsPage() {
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
+
+  // Time-period generator state
+  const [periodStartFY, setPeriodStartFY] = useState<number>(new Date().getFullYear());
+  const [periodNumYears, setPeriodNumYears] = useState<number>(3);
+  const [periodPreview, setPeriodPreview] = useState<TimePeriodNode[] | null>(null);
+
+  // Feature flags — now backed by /api/v2/tenant-features (was localStorage)
+  const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FLAGS);
+  const [flagSaving, setFlagSaving] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/v2/tenant-features", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && d.data?.flags) {
+          setFlags({ ...DEFAULT_FLAGS, ...d.data.flags });
+        }
+      })
+      .catch(() => {
+        // Fallback: read legacy localStorage if API not reachable
+        try {
+          const raw = typeof window !== "undefined" ? window.localStorage.getItem("cfo_pilot_feature_flags") : null;
+          if (raw) setFlags({ ...DEFAULT_FLAGS, ...JSON.parse(raw) });
+        } catch { /* ignore */ }
+      });
+  }, []);
+
+  const [flagsOfflineMode, setFlagsOfflineMode] = useState(false);
+
+  const saveFlag = async (key: keyof FeatureFlags, value: boolean) => {
+    setFlags((f) => ({ ...f, [key]: value }));   // optimistic, never rollback
+    setFlagSaving(key);
+
+    // Always persist to localStorage so the toggle is sticky in the UI
+    // regardless of API status. Lets the UI work before DB migration.
+    try {
+      const next = { ...flags, [key]: value };
+      window.localStorage.setItem("cfo_pilot_feature_flags", JSON.stringify(next));
+    } catch { /* ignore */ }
+
+    try {
+      const res = await fetch("/api/v2/tenant-features", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featureKey: key, isEnabled: value }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setFlagsOfflineMode(false);
+    } catch {
+      // API not ready (DB likely missing tenant_features table) — keep the
+      // optimistic value, mark "offline" so user sees the explanation.
+      setFlagsOfflineMode(true);
+    } finally {
+      setFlagSaving(null);
+    }
+  };
+
+  // User role (for Settings lock — only ADMIN can unlock)
+  const [userRole, setUserRole] = useState<string>("VIEWER");
+  const [editingUnlocked, setEditingUnlocked] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        const role = d?.user?.role ?? d?.data?.role ?? d?.role;
+        if (role) setUserRole(role);
+      })
+      .catch(() => { /* default to VIEWER */ });
+  }, []);
+
+  // Settings are locked once first save completes, unless an admin unlocks.
+  const isLocked = settings.isSetupComplete && !editingUnlocked;
+  const canUnlock = userRole === "ADMIN";
+
+  const handleGeneratePeriods = () => {
+    const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
+    setPeriodPreview(nodes);
+    // Persist to localStorage so the Time dimension page picks them up
+    // until the API route is migrated (task #8).
+    try {
+      window.localStorage.setItem("cfo_pilot_time_periods", JSON.stringify(nodes));
+      window.localStorage.setItem("cfo_pilot_time_periods_meta", JSON.stringify({
+        fiscalYearStartMonth: settings.fiscalYearStart,
+        startFY: periodStartFY,
+        numYears: periodNumYears,
+        generatedAt: new Date().toISOString(),
+      }));
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     fetch("/api/settings", { credentials: "include" })
@@ -133,9 +240,41 @@ export default function AppSettingsPage() {
         </div>
       )}
 
+      {isLocked && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-800">Setup is locked.</p>
+            <p className="text-sm text-gray-600 mt-1">
+              These settings shape your whole data model. They were saved {settings.isSetupComplete ? "earlier" : "just now"} and are read-only.
+              {canUnlock
+                ? " As an admin you can unlock for editing — any change will be audited."
+                : " Ask an admin to unlock if a change is needed."}
+            </p>
+          </div>
+          {canUnlock && (
+            <button
+              onClick={() => setEditingUnlocked(true)}
+              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg bg-white hover:bg-gray-100"
+            >
+              🔓 Unlock for editing
+            </button>
+          )}
+        </div>
+      )}
+      {editingUnlocked && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-800">
+          ⚠️ Editing unlocked. Saving will overwrite the locked configuration and write an audit row.
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
       )}
+
+      {/* Lock wrapper: when locked, every form control inside is disabled
+          via native fieldset semantics. */}
+      <fieldset disabled={isLocked} className={isLocked ? "space-y-8 opacity-70 pointer-events-none" : "space-y-8 contents"}>
 
       {/* App Identity */}
       <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -194,11 +333,20 @@ export default function AppSettingsPage() {
               onChange={(e) => setSettings((s) => ({ ...s, reportingCurrency: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {CURRENCIES_SHORT.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              <optgroup label="Most common">
+                {ISO_TOP.map((code) => {
+                  const c = ISO_4217.find((x) => x.code === code)!;
+                  return <option key={code} value={code}>{c.code} — {c.name} ({c.symbol})</option>;
+                })}
+              </optgroup>
+              <optgroup label="All ISO 4217">
+                {ISO_4217.filter((c) => !ISO_TOP.includes(c.code))
+                  .map((c) => (
+                    <option key={c.code} value={c.code}>{c.code} — {c.name} ({c.symbol})</option>
+                  ))}
+              </optgroup>
             </select>
-            <p className="text-xs text-gray-400 mt-1">All FX rates convert to this currency</p>
+            <p className="text-xs text-gray-400 mt-1">All FX rates convert to this currency · {ISO_4217.length} currencies available</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Fiscal Year Start</label>
@@ -207,12 +355,137 @@ export default function AppSettingsPage() {
               onChange={(e) => setSettings((s) => ({ ...s, fiscalYearStart: Number(e.target.value) }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {MONTH_NAMES.map((name, i) => (
-                <option key={i + 1} value={i + 1}>{name} (Month {i + 1})</option>
+              {FISCAL_YEAR_START_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <p className="text-xs text-gray-400 mt-1">Used when generating time dimensions</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {FISCAL_YEAR_START_OPTIONS.find((o) => o.value === settings.fiscalYearStart)?.description ?? "Used when generating time dimensions"}
+            </p>
           </div>
+        </div>
+      </section>
+
+      {/* Time Period Auto-Generation */}
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Wand2 className="h-4 w-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Time Periods — Auto-Generate</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600">
+            Based on your Fiscal Year Start, we'll generate <strong>Year → Quarter → Month</strong> hierarchy automatically (OneStream-style).
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Fiscal Year</label>
+              <input
+                type="number"
+                min={2000}
+                max={2099}
+                value={periodStartFY}
+                onChange={(e) => setPeriodStartFY(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Years</label>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={periodNumYears}
+                onChange={(e) => setPeriodNumYears(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={handleGeneratePeriods}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Generate Preview
+              </button>
+            </div>
+          </div>
+
+          {periodPreview && (
+            <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/40 max-h-72 overflow-y-auto">
+              <p className="text-xs text-emerald-700 mb-2 font-medium">
+                ✅ Generated &amp; saved {periodPreview.length} members ({periodPreview.filter((n) => n.type === "YEAR").length} years ·
+                {" "}{periodPreview.filter((n) => n.type === "QUARTER").length} quarters ·
+                {" "}{periodPreview.filter((n) => n.type === "MONTH").length} months) — visible now on{" "}
+                <a href="/metadata/time" className="underline">Time dimension page</a>.
+              </p>
+              <ul className="text-sm space-y-0.5 font-mono">
+                {periodPreview.map((n) => (
+                  <li
+                    key={n.code}
+                    className={
+                      n.type === "YEAR"    ? "font-semibold text-gray-900" :
+                      n.type === "QUARTER" ? "pl-4 text-gray-700"         :
+                                             "pl-8 text-gray-500"
+                    }
+                  >
+                    {n.code} <span className="text-gray-400">— {n.name} · {n.startDate} → {n.endDate}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-700 mt-3">
+                ⚠️ Saved to browser only. Full DB persistence kicks in after API migration (task #8).
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Optional Dimensions / Feature Flags */}
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <ToggleLeft className="h-4 w-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Optional Dimensions & Modules</h2>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-gray-600 mb-4">
+            Always-on (cannot disable): <strong>Account · Entity · Scenario · Time · Currency</strong>.
+            Toggle the optional dimensions and modules below — your sidebar updates after a refresh.
+          </p>
+          <div className="space-y-3">
+            {[
+              { key: "multi_entity_enabled",   label: "Multi-Entity",          desc: "Enable entity hierarchy + consolidation methods" },
+              { key: "multi_currency_enabled", label: "Multi-Currency / FX",   desc: "Enable the FX rates table and currency translation behaviour" },
+              { key: "intercompany_enabled",   label: "Intercompany (ICP)",    desc: "Enable ICP dimension and elimination tags on Entity" },
+              { key: "department_enabled",     label: "Department",            desc: "Reserve a UD slot for Departments (default ON)" },
+              { key: "cost_center_enabled",    label: "Cost Center",           desc: "Reserve a UD slot for Cost Centers" },
+              { key: "project_enabled",        label: "Project",               desc: "Reserve a UD slot for Projects" },
+              { key: "alternate_hierarchy_enabled", label: "Alternate Hierarchies", desc: "Multiple named hierarchies per dim (statutory vs management view)" },
+            ].map((f) => (
+              <label key={f.key} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{f.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={flags[f.key as keyof FeatureFlags]}
+                  onChange={(e) => saveFlag(f.key as keyof FeatureFlags, e.target.checked)}
+                  className="h-5 w-5 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+              </label>
+            ))}
+          </div>
+          {flagsOfflineMode ? (
+            <p className="text-xs text-amber-700 mt-4">
+              ⚠️ Toggles saved to browser only — the <code>tenant_features</code> DB table isn&apos;t ready yet.
+              Run <code>npx prisma migrate dev --name v2_tenant_features</code> to enable cross-device persistence.
+              Your changes are still visible immediately.
+            </p>
+          ) : (
+            <p className="text-xs text-emerald-700 mt-4">
+              ✅ Toggles save to the <code>tenant_features</code> table. Audit row written for every change.
+            </p>
+          )}
         </div>
       </section>
 
@@ -256,6 +529,8 @@ export default function AppSettingsPage() {
         </div>
       </section>
 
+      </fieldset>
+
       {/* Save */}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">
@@ -263,7 +538,7 @@ export default function AppSettingsPage() {
         </p>
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || isLocked}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
           {saved ? (
