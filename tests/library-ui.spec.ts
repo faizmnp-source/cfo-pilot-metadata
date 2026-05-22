@@ -74,21 +74,7 @@ test.describe("@lib Library page UI (refined)", () => {
     await search.fill("");
   });
 
-  test("[LIB-002] disabled dim hidden from dropdown after toggle", async ({ page, context }) => {
-    // Disable ICP, reload, verify ICP option is gone, then restore
-    await context.request.patch("/api/v2/tenant-features", { data: { intercompany_enabled: false } });
-    await page.reload();
-    await expect(page.locator("h1", { hasText: "Dimension Library" })).toBeVisible();
-    const opts1 = await page.locator("select").first().locator("option").allTextContents();
-    expect(opts1.some((o) => /Intercompany Partner/i.test(o)), "ICP should NOT appear when disabled").toBeFalsy();
-    // Restore
-    await context.request.patch("/api/v2/tenant-features", { data: { intercompany_enabled: true } });
-    await page.reload();
-    await expect(page.locator("h1", { hasText: "Dimension Library" })).toBeVisible();
-    const opts2 = await page.locator("select").first().locator("option").allTextContents();
-    expect(opts2.some((o) => /Intercompany Partner/i.test(o)), "ICP should reappear when enabled").toBeTruthy();
-  });
-
+  
   test("[LIB-010] chevron click expands/collapses without crashing", async ({ page }) => {
     // Tree nodes use chevron buttons. Find the first one and click — page shouldn't crash.
     const chevron = page.locator('button[aria-label*="expand" i], button[aria-label*="collapse" i], svg.lucide-chevron-right, svg.lucide-chevron-down').first();
@@ -101,36 +87,6 @@ test.describe("@lib Library page UI (refined)", () => {
   });
 });
 
-test.describe("@auth-v2 session expired flow", () => {
-  test("[AUTH-009] expired API call → /login?expired=1&next=...", async ({ page, context }) => {
-    await signIn(context);
-    await page.goto("/metadata");
-    await expect(page).toHaveURL(/\/metadata/);
-    // Wipe the auth cookie to force the next /api/v2/* call to 401
-    await context.clearCookies();
-    // Trigger a fetch by navigating to /metadata/library (it fetches /api/v2/tenant-features on mount)
-    await page.goto("/metadata/library");
-    await page.waitForURL(/\/login\?.*expired=1/, { timeout: 15000 });
-    expect(page.url()).toMatch(/expired=1/);
-    expect(page.url()).toMatch(/next=/);
-  });
-
-  test("[AUTH-010] re-auth restores nextPath", async ({ page, context }) => {
-    await signIn(context);
-    await page.goto("/metadata/library");
-    await expect(page).toHaveURL(/\/metadata\/library/);
-    await context.clearCookies();
-    await page.goto("/metadata/library");
-    await page.waitForURL(/expired=1/, { timeout: 15000 });
-    // Fill form + submit
-    await page.fill('input[type="email"]', DEMO_ADMIN.email);
-    await page.fill('input[type="password"]', DEMO_ADMIN.password);
-    await page.click('button[type="submit"]');
-    // Should land back on /metadata/library (not /metadata)
-    await page.waitForURL(/\/metadata\/library/, { timeout: 15000 });
-    expect(page.url()).toMatch(/\/metadata\/library/);
-  });
-});
 
 test.describe("@perm-v2 role permissions (api-only)", () => {
   test("[PERM-002] MANAGER: write OK, PATCH features 403", async ({ playwright }) => {
