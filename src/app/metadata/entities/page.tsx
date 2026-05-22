@@ -193,6 +193,23 @@ export default function EntitiesPage() {
       const v2res = await fetch(`/api/v2/members/entity?${params}`, { credentials: "include" });
       if (v2res.ok) {
         const v2 = await v2res.json();
+        // Map v2 dimension_member → Entity shape used by this legacy page.
+        // Inlined because the helper was lost in the v2 schema migration;
+        // legacy page is being replaced by /metadata/library — temporary glue.
+        const mapV2Entity = (m: any): Entity => ({
+          id: m.id,
+          code: m.memberCode,
+          name: m.memberName,
+          parentId: null,
+          baseCurrency:        m.properties?.base_currency        ?? "USD",
+          consolidationMethod: m.properties?.consolidation_method ?? "FULL",
+          ownershipPct:        m.properties?.ownership_pct        ?? 100,
+          country:             m.properties?.country              ?? null,
+          taxId:               m.properties?.tax_id               ?? null,
+          icpEnabled:          m.properties?.icp_enabled          ?? false,
+          isActive: m.isActive,
+          sortOrder: m.sortOrder ?? 0,
+        });
         const mapped = (v2?.data?.data ?? []).map(mapV2Entity);
         setEntities(mapped);
         setTotal(v2?.data?.total ?? mapped.length);

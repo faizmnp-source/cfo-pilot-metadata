@@ -123,7 +123,7 @@ export const UpdateMemberInputByDim: Record<DimensionKind, z.ZodTypeAny> =
   Object.fromEntries(
     (Object.entries(CreateMemberInputByDim) as [DimensionKind, z.ZodObject<any>][])
       .map(([k, schema]) => [k, schema.partial()])
-  ) as Record<DimensionKind, z.ZodTypeAny>;
+  ) as unknown as Record<DimensionKind, z.ZodTypeAny>;
 
 // ─── URL-slug → DimensionKind mapping ────────────────────────────
 

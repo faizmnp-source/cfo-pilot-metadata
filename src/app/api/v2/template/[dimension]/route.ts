@@ -57,8 +57,11 @@ export async function GET(
   XLSX.utils.book_append_sheet(wb, notesWs, "Notes");
 
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  // Node's Buffer doesn't satisfy the BodyInit type in newer Next types —
+  // wrap in Uint8Array which is a structural match.
+  const body = new Uint8Array(buf);
 
-  return new Response(buf, {
+  return new Response(body, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

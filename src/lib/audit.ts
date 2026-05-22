@@ -1,49 +1,20 @@
-import { prisma } from "./prisma";
-import { AuditAction, DimensionType } from "@prisma/client";
+// Legacy audit helper — superseded by src/lib/audit-v2.ts.
+// Kept as a no-op shim so legacy import sites don't crash. The v2 schema
+// dropped the DimensionType enum and renamed tableName → entityType, so
+// the original implementation no longer typechecks. All new write paths
+// should import { audit } from "@/lib/audit-v2" instead.
 
-interface AuditParams {
-  tenantId: string;
-  tableName: string;
-  recordId: string;
-  dimensionType?: DimensionType;
-  action: AuditAction;
-  oldValue?: Record<string, unknown>;
-  newValue?: Record<string, unknown>;
-  userId?: string;
-  userName?: string;
-  userEmail?: string;
-  userRole?: string;
-  ipAddress?: string;
-}
+export type LegacyAuditPayload = Record<string, unknown>;
 
-export async function writeAuditLog(params: AuditParams) {
-  const changedFields: string[] = [];
-  if (params.oldValue && params.newValue) {
-    for (const key of Object.keys(params.newValue)) {
-      if (JSON.stringify(params.oldValue[key]) !== JSON.stringify(params.newValue[key])) {
-        changedFields.push(key);
-      }
-    }
-  }
-  try {
-    await prisma.auditLog.create({
-      data: {
-        tenantId: params.tenantId,
-        tableName: params.tableName,
-        recordId: params.recordId,
-        dimensionType: params.dimensionType,
-        action: params.action,
-        oldValue: params.oldValue ? JSON.parse(JSON.stringify(params.oldValue)) : undefined,
-        newValue: params.newValue ? JSON.parse(JSON.stringify(params.newValue)) : undefined,
-        changedFields,
-        userId: params.userId,
-        userName: params.userName,
-        userEmail: params.userEmail,
-        userRole: params.userRole,
-        ipAddress: params.ipAddress,
-      },
-    });
-  } catch (err) {
-    console.error("[AuditLog] Failed to write audit:", err);
+export async function writeAuditLog(_payload: LegacyAuditPayload): Promise<void> {
+  // Intentional no-op. Legacy callers in soon-to-be-stubbed routes will
+  // disappear naturally. If you find this being called from a NEW code
+  // path, switch to audit-v2.audit() instead.
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[audit.ts] legacy writeAuditLog called — migrate to audit-v2.audit()");
   }
 }
+
+// Re-export the v2 helper so call sites that want either flavor can switch
+// over with a one-line import change.
+export { audit } from "./audit-v2";

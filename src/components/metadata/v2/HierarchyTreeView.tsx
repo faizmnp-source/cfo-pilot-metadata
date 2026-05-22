@@ -79,7 +79,7 @@ export function HierarchyTreeView({
 
       // Walk tree and stamp parentId on every node so Add Sibling works
       const tNodes: TreeNode[] = treeData?.data?.tree ?? [];
-      function stamp(n: TreeNode, parentId: string | null) {
+      const stamp = (n: TreeNode, parentId: string | null): void => {
         n.parentId = parentId;
         // enrich with properties / isActive from member lookup
         if (lookup[n.id]) {
@@ -87,13 +87,13 @@ export function HierarchyTreeView({
           n.isActive = lookup[n.id].isActive;
         }
         n.children.forEach((c) => stamp(c, n.id));
-      }
+      };
       tNodes.forEach((n) => stamp(n, null));
       setTree(tNodes);
 
       // Orphans = active members not appearing anywhere in the tree
       const inTreeIds = new Set<string>();
-      function walk(n: TreeNode) { inTreeIds.add(n.id); n.children.forEach(walk); }
+      const walk = (n: TreeNode): void => { inTreeIds.add(n.id); n.children.forEach(walk); };
       tNodes.forEach(walk);
       setOrphans(
         allMembers

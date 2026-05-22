@@ -8,15 +8,24 @@ export async function GET(req: NextRequest) {
   if (!("auth" in authResult)) return authResult;
   const { auth } = authResult;
   const p = getPaginationParams(req.nextUrl.searchParams);
-  const tableName = req.nextUrl.searchParams.get("table");
-  const action = req.nextUrl.searchParams.get("action");
-  const userId = req.nextUrl.searchParams.get("userId");
-  const where = {
+  // v2 schema renamed tableName → entityType and dropped the userName
+  // duplicate field (we join through User if we need a name). Keep the
+  // ?table= query alias so existing UI links still work.
+  const entityType = req.nextUrl.searchParams.get("entityType")
+                  ?? req.nextUrl.searchParams.get("table");
+  const action     = req.nextUrl.searchParams.get("action");
+  const userId     = req.nextUrl.searchParams.get("userId");
+  const where: any = {
     tenantId: auth.tid,
-    ...(tableName && { tableName }),
-    ...(action && { action: action as any }),
-    ...(userId && { userId }),
-    ...(p.search && { OR: [{ tableName: { contains: p.search, mode: "insensitive" as const } }, { userName: { contains: p.search, mode: "insensitive" as const } }] }),
+    ...(entityType && { entityType }),
+    ...(action     && { action: action as any }),
+    ...(userId     && { userId }),
+    ...(p.search && {
+      OR: [
+        { entityType: { contains: p.search, mode: "insensitive" as const } },
+        { entityId:   { contains: p.search, mode: "insensitive" as const } },
+      ],
+    }),
   };
   const [data, total] = await Promise.all([
     prisma.auditLog.findMany({ where, skip: (p.page-1)*p.pageSize, take: p.pageSize, orderBy: { createdAt: "desc" } }),
