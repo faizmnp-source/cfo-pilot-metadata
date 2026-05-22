@@ -34,6 +34,7 @@ const CFO_NAV = [
 const META_NAV_CORE = [
   { href: "/metadata",         label: "Overview",          icon: Layers },
   { href: "/metadata/library", label: "Dimension Library", icon: BookOpen },
+  { href: "/data/forms",       label: "Data Forms",        icon: FolderKanban },
   { href: "/data/input",       label: "Data Input",        icon: Pencil },
 ];
 
