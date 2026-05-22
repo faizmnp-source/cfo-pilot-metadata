@@ -300,7 +300,7 @@ export default function AccountsPage() {
   const PAGE_SIZE = 20;
 
   // Map a v2 dimension_member row to the page's existing Account shape.
-  const mapV2 = (m: any): Account => ({
+  const mapV2 = (m: any): Account => (({
     id: m.id,
     code: m.memberCode,
     name: m.memberName,
@@ -318,7 +318,7 @@ export default function AccountsPage() {
     sortOrder: m.sortOrder ?? 0,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
-  });
+  }) as unknown as Account);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
