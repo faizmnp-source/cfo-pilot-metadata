@@ -146,14 +146,18 @@ export default function AppSettingsPage() {
 
   const [periodPersistError, setPeriodPersistError] = useState<string | null>(null);
   const [periodPersistInfo,  setPeriodPersistInfo]  = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   const handleGeneratePeriods = async () => {
-    const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
-    setPeriodPreview(nodes);
+    setGenerating(true);
     setPeriodPersistError(null);
     setPeriodPersistInfo("Saving periods to Dimension Library…");
 
-    // 1) Local cache for any UI still reading from localStorage
+    // Local preview (browser-side calc, instant)
+    const nodes = generateTimePeriods(settings.fiscalYearStart, periodStartFY, periodNumYears);
+    setPeriodPreview(nodes);
+
+    // Local cache for any legacy UI still reading from localStorage
     try {
       window.localStorage.setItem("cfo_pilot_time_periods", JSON.stringify(nodes));
       window.localStorage.setItem("cfo_pilot_time_periods_meta", JSON.stringify({
@@ -164,89 +168,35 @@ export default function AppSettingsPage() {
       }));
     } catch { /* ignore */ }
 
-    // 2) POST each member to /api/v2/members/time, then wire edges so the
-    //    Library tree shows YEAR > QUARTER > MONTH. Skips 409 (already exists)
-    //    so Generate is idempotent.
-    const codeToId: Record<string, string> = {};
-    let created = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    for (const n of nodes) {
-      const properties: Record<string, any> = {
-        period_type:  n.type,            // YEAR | QUARTER | MONTH (matches TimePeriodType)
-        fiscal_year:  n.fiscalYear,
-        start_date:   n.startDate,
-        end_date:     n.endDate,
-      };
-      if (n.monthIndex   !== undefined) properties.month_index   = n.monthIndex;
-      if (n.quarterIndex !== undefined) properties.quarter_index = n.quarterIndex;
-
-      const body = {
-        memberCode: n.code,
-        memberName: n.name,
-        properties,
-      };
-      try {
-        const r = await fetch("/api/v2/members/time", {
-          method:      "POST",
-          credentials: "include",
-          headers:     { "Content-Type": "application/json" },
-          body:        JSON.stringify(body),
-        });
-        const data = await r.json().catch(() => ({}));
-        if (r.ok && data?.data?.id) {
-          codeToId[n.code] = data.data.id;
-          created++;
-        } else if (r.status === 409) {
-          // already exists — fetch its id so we can still build edges
-          skipped++;
-          const list = await fetch(
-            `/api/v2/members/time?search=${encodeURIComponent(n.code)}&pageSize=5`,
-            { credentials: "include" },
-          ).then((x) => x.json()).catch(() => null);
-          const match = (list?.data?.data ?? []).find((m: any) => m.memberCode === n.code);
-          if (match) codeToId[n.code] = match.id;
-        } else {
-          failed++;
-        }
-      } catch {
-        failed++;
+    // Single transactional request — replaces the 99-fetch loop that left
+    // the hierarchy half-wired if the browser navigated away mid-flight.
+    try {
+      const r = await fetch("/api/v2/time/bulk-generate", {
+        method:      "POST",
+        credentials: "include",
+        headers:     { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fiscalYearStartMonth: settings.fiscalYearStart,
+          startFY:              periodStartFY,
+          numYears:             periodNumYears,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setPeriodPersistError(data?.error ?? `Bulk generate failed (HTTP ${r.status}).`);
+      } else {
+        const d = data?.data ?? {};
+        setPeriodPersistInfo(
+          `Saved to Library: ${d.membersCreated} new members · ${d.membersExisting} already existed · ` +
+          `${d.edgesCreated} new edges · ${d.edgesExisting} already existed. ` +
+          `Total ${d.totalMembers} members in dimension.`,
+        );
       }
+    } catch (e: any) {
+      setPeriodPersistError(`Network error: ${e?.message ?? String(e)}`);
+    } finally {
+      setGenerating(false);
     }
-
-    // 3) Build hierarchy edges (parent→child) under 'default'
-    let edgesCreated = 0;
-    let edgesSkipped = 0;
-    for (const n of nodes) {
-      if (!n.parentCode) continue;
-      const parentId = codeToId[n.parentCode];
-      const childId  = codeToId[n.code];
-      if (!parentId || !childId) continue;
-      try {
-        const r = await fetch("/api/v2/hierarchy/time", {
-          method:      "POST",
-          credentials: "include",
-          headers:     { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hierarchyCode:  "default",
-            parentMemberId: parentId,
-            childMemberId:  childId,
-            operator:       "ADD",
-            weight:         1,
-          }),
-        });
-        if (r.ok) edgesCreated++;
-        else if (r.status === 409) edgesSkipped++;
-      } catch { /* ignore — best effort */ }
-    }
-
-    if (failed > 0) {
-      setPeriodPersistError(`${failed} member(s) failed to save. Check console + tenant_features 'time' dim is enabled.`);
-    }
-    setPeriodPersistInfo(
-      `Saved to Library: ${created} created · ${skipped} already existed · ${edgesCreated} edges added (${edgesSkipped} existed).`,
-    );
   };
 
   useEffect(() => {
@@ -488,10 +438,11 @@ export default function AppSettingsPage() {
             <div className="flex items-end">
               <button
                 onClick={handleGeneratePeriods}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                disabled={generating}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Sparkles className="h-4 w-4" />
-                Generate Preview
+                {generating ? "Generating…" : "Generate Preview"}
               </button>
             </div>
           </div>
