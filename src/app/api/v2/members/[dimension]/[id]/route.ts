@@ -15,6 +15,7 @@ import {
   UpdateMemberInputByDim,
   resolveDimKind,
 } from "@/lib/dim-schemas";
+import { syncIcpFromEntity } from "@/lib/sync-icp";
 
 // ─── GET ─────────────────────────────────────────────────────────
 
@@ -53,6 +54,14 @@ export async function PUT(
 
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
+
+  // ICP is system-managed (derived from Entity.icp_enabled).
+  if (kind === "ICP") {
+    return apiError(
+      "ICP members are system-managed. Toggle icp_enabled on the source Entity instead.",
+      409,
+    );
+  }
 
   const existing = await prisma.dimensionMember.findFirst({
     where: { id: ctx.params.id, tenantId: auth.tid },
@@ -124,6 +133,24 @@ export async function PUT(
     });
   } catch { /* ignore */ }
 
+  // Entity icp_enabled toggled? Re-sync ICP. Cheap and idempotent —
+  // we don't bother detecting whether icp_enabled actually changed.
+  if (kind === "ENTITY") {
+    try {
+      await syncIcpFromEntity({
+        tenantId: auth.tid,
+        userId:   auth.sub,
+        op:       "update",
+        entity: {
+          id:         updated.id,
+          memberCode: updated.memberCode,
+          memberName: updated.memberName,
+          properties: (updated.properties as any) ?? null,
+        },
+      });
+    } catch (e) { console.error("[sync-icp] update failed:", e); }
+  }
+
   return apiSuccess(updated);
 }
 
@@ -139,6 +166,14 @@ export async function DELETE(
 
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
+
+  // ICP is system-managed; deletes happen via Entity flips, not directly.
+  if (kind === "ICP") {
+    return apiError(
+      "ICP members are system-managed. Toggle icp_enabled off on the source Entity to deactivate.",
+      409,
+    );
+  }
 
   const existing = await prisma.dimensionMember.findFirst({
     where: { id: ctx.params.id, tenantId: auth.tid },
@@ -184,6 +219,23 @@ export async function DELETE(
       metadata: { dimension: kind, hard },
     });
   } catch { /* ignore */ }
+
+  // Entity deleted → deactivate matching ICP member
+  if (kind === "ENTITY") {
+    try {
+      await syncIcpFromEntity({
+        tenantId: auth.tid,
+        userId:   auth.sub,
+        op:       "delete",
+        entity: {
+          id:         existing.id,
+          memberCode: existing.memberCode,
+          memberName: existing.memberName,
+          properties: (existing.properties as any) ?? null,
+        },
+      });
+    } catch (e) { console.error("[sync-icp] delete failed:", e); }
+  }
 
   return apiSuccess({ id: existing.id, deleted: true, hard });
 }

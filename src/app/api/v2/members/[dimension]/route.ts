@@ -15,6 +15,7 @@ import {
   resolveDimKind,
 } from "@/lib/dim-schemas";
 import { ensureDimension } from "@/lib/ensure-dimension";
+import { syncIcpFromEntity } from "@/lib/sync-icp";
 
 // ─── GET /api/v2/members/[dimension] ─────────────────────────────
 
@@ -97,6 +98,16 @@ export async function POST(
   const kind = resolveDimKind(ctx.params.dimension);
   if (!kind) return apiError(`Unknown dimension: ${ctx.params.dimension}`, 400);
 
+  // ICP is system-managed (derived from Entity.icp_enabled). Block direct
+  // writes from the UI/API — toggle Entity.icp_enabled instead. See
+  // src/lib/sync-icp.ts for the derivation logic.
+  if (kind === "ICP") {
+    return apiError(
+      "ICP members are system-managed. Toggle icp_enabled on an Entity member instead.",
+      409,
+    );
+  }
+
   // Auto-provision the Dimension row on first access for this tenant.
   const dimension = await ensureDimension(auth.tid, kind);
   if (!dimension.isEnabled) {
@@ -160,6 +171,24 @@ export async function POST(
       metadata: { dimension: kind, memberCode: input.memberCode },
     });
   } catch { /* never let audit failures block the write */ }
+
+  // If this is an Entity, derive a matching ICP member (or update existing).
+  // Failures are swallowed — a stale ICP self-heals on the next Entity write.
+  if (kind === "ENTITY") {
+    try {
+      await syncIcpFromEntity({
+        tenantId: auth.tid,
+        userId:   auth.sub,
+        op:       "create",
+        entity: {
+          id:         created.id,
+          memberCode: created.memberCode,
+          memberName: created.memberName,
+          properties: (created.properties as any) ?? null,
+        },
+      });
+    } catch (e) { console.error("[sync-icp] create failed:", e); }
+  }
 
   return apiSuccess(created, 201);
 }
