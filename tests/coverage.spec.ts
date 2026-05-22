@@ -146,13 +146,10 @@ test.describe("@lib Library page UI", () => {
     // dim selector
     const selector = page.locator("select").first();
     await expect(selector).toBeVisible();
-    // switch to Entity
-    await selector.selectOption({ label: /Entity/i }).catch(async () => {
-      // fallback: select first option containing 'Entity'
-      const opts = await selector.locator("option").allTextContents();
-      const ent = opts.find((o) => /entity/i.test(o));
-      if (ent) await selector.selectOption({ label: ent });
-    });
+    // switch to Entity — selectOption requires string label, find the matching option text
+    const opts = await selector.locator("option").allTextContents();
+    const entLabel = opts.find((o) => /entity/i.test(o));
+    if (entLabel) await selector.selectOption({ label: entLabel });
     // header should still be visible after switch
     await expect(page.locator('text=Dimension Library')).toBeVisible();
   });
