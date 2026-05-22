@@ -17,6 +17,7 @@ const DEFAULT_LABELS: Record<string, string> = {
   TIME:     "Time Period",
   CURRENCY: "Currency",
   ICP:      "Intercompany Partner",
+  ORIGIN:   "Origin",
   UD1: "User Dim 1", UD2: "User Dim 2", UD3: "User Dim 3", UD4: "User Dim 4",
   UD5: "User Dim 5", UD6: "User Dim 6", UD7: "User Dim 7", UD8: "User Dim 8",
 };

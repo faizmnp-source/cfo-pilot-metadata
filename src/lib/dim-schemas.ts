@@ -95,6 +95,22 @@ export const IcpPropertiesSchema = z.object({
   is_system:     z.boolean().optional(),
 }).strict();
 
+// ─── Origin (Data Source) ────────────────────────────────────────
+
+// OneStream-style Origin dim. Every fact_row carries an originId so we can
+// filter by source — Import, Form, AI, Calculation, Elimination, Consol,
+// Translation, etc. We seed 'Import' on first access; admins extend as
+// needed. Unlike ICP, this dim IS user-writable (admins can add custom
+// origins for their tenant) — we just guarantee 'Import' always exists.
+export const OriginPropertiesSchema = z.object({
+  // 'origin_type' tags how facts of this origin should be treated by
+  // downstream consumers (read-only-from-import vs editable-via-form vs
+  // derived-by-calc). Optional today — V1 seed only sets it on Import.
+  origin_type:  z.enum(["IMPORT", "FORM", "AI", "CALC", "ELIM", "CONSOL", "TRANSLATION", "ALLOC", "JOURNAL"]).optional(),
+  is_system:    z.boolean().optional(),
+  description:  z.string().optional(),
+}).strict();
+
 // ─── UD1..UD8 (user-defined) ─────────────────────────────────────
 
 // Customer-defined slot — no fixed property schema. We accept any object
@@ -126,6 +142,7 @@ export const CreateMemberInputByDim: Record<DimensionKind, z.ZodTypeAny> = {
   TIME:     MemberBaseSchema.extend({ properties: TimePropertiesSchema }),
   CURRENCY: MemberBaseSchema.extend({ properties: CurrencyPropertiesSchema }),
   ICP:      MemberBaseSchema.extend({ properties: IcpPropertiesSchema }),
+  ORIGIN:   MemberBaseSchema.extend({ properties: OriginPropertiesSchema.default({}) }),
   UD1: MemberBaseSchema.extend({ properties: UdPropertiesSchema.default({}) }),
   UD2: MemberBaseSchema.extend({ properties: UdPropertiesSchema.default({}) }),
   UD3: MemberBaseSchema.extend({ properties: UdPropertiesSchema.default({}) }),
@@ -153,6 +170,7 @@ export const DIM_SLUG_TO_KIND: Record<string, DimensionKind> = {
   time: "TIME" as DimensionKind,
   currency: "CURRENCY" as DimensionKind,
   icp: "ICP" as DimensionKind,
+  origin: "ORIGIN" as DimensionKind,
   ud1: "UD1" as DimensionKind, ud2: "UD2" as DimensionKind,
   ud3: "UD3" as DimensionKind, ud4: "UD4" as DimensionKind,
   ud5: "UD5" as DimensionKind, ud6: "UD6" as DimensionKind,

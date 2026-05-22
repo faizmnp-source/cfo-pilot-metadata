@@ -105,8 +105,12 @@ enum DimensionKind {
   SCENARIO
   TIME
   CURRENCY
-  // Toggleable (1)
+  // Toggleable (1) — system-managed, derived from Entity.icp_enabled
   ICP
+  // Always-on data-source dim (OneStream-style "Origin"). Seeded with
+  // 'Import'; admins can add Form / AI / Calc / Elim / Consol / Translation
+  // later. Every fact row carries originId so we can filter by source.
+  ORIGIN
   // Customer-defined slots (8)
   UD1
   UD2

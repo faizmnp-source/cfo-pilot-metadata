@@ -148,7 +148,26 @@ export const TEMPLATES: Record<SupportedDim, TemplateSpec> = {
     ],
     notes: [
       "REQUIRED columns: code, name, entity_code",
-      "Only meaningful when intercompany_enabled is on in tenant features",
+      "NOTE: ICP is now system-managed — toggle icp_enabled on an Entity instead. This template is kept for legacy imports only.",
+    ],
+  },
+
+  origin: {
+    sheetName: "Origins",
+    columns: [
+      ...COMMON.filter((c) => c.key !== "parent_code"),
+      { key: "origin_type", label: "Origin Type", required: true, hint: "IMPORT | FORM | AI | CALC | ELIM | CONSOL | TRANSLATION | ALLOC | JOURNAL" },
+    ],
+    sampleRows: [
+      { code: "Import",  name: "Import",            description: "Loaded from external file",   origin_type: "IMPORT" },
+      { code: "Form",    name: "Form Input",        description: "Entered via the data form",   origin_type: "FORM" },
+      { code: "AI",      name: "AI Generated",      description: "Forecasted / suggested by AI", origin_type: "AI" },
+      { code: "Calc",    name: "Calculated",        description: "Derived by calc engine",      origin_type: "CALC" },
+    ],
+    notes: [
+      "Every fact row carries an originId so you can filter by data source.",
+      "REQUIRED columns: code, name, origin_type",
+      "'Import' is seeded automatically — re-uploading it is a no-op (409).",
     ],
   },
 
