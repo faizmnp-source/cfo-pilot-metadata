@@ -93,3 +93,75 @@ export async function ensureBaseCurrencyMember(
 ): Promise<string> {
   return ensureCurrencySeed(tenantId, userId, REPORTING_CURRENCY_CODE);
 }
+
+/**
+ * Resolve a "semantic" currency pick (Local / Reporting) to a concrete ISO
+ * currency member id for fact storage + filtering.
+ *
+ *   Local      → entity.properties.base_currency (e.g. "INR" → INR member id)
+ *   Reporting  → the tenant's is_base=true currency member
+ *   Anything else (an actual ISO member) is returned unchanged.
+ *
+ * Why this exists: facts are stored at a concrete currency (USD, INR, EUR).
+ * Local / Reporting are POV conveniences — they have their own
+ * DimensionMember rows so the POV dropdown can show them, but no FactRow is
+ * ever stored against those ids. Without this resolution, a user who picks
+ * "Local" in the POV would filter facts by Local's UUID and see zero rows.
+ *
+ * Returns null if resolution failed (e.g. Local picked but entity has no
+ * base_currency, or no matching ISO member exists). Callers should treat
+ * null as "skip the currency filter" rather than "no data".
+ */
+export async function resolveSemanticCurrency(
+  tenantId:   string,
+  currencyId: string,
+  entityId:   string | null,
+): Promise<string | null> {
+  const member = await prisma.dimensionMember.findFirst({
+    where: { tenantId, id: currencyId },
+    select: { id: true, properties: true, dimensionId: true },
+  });
+  if (!member) return null;
+
+  const props = (member.properties as any) ?? {};
+  // Already a concrete ISO currency — nothing to resolve.
+  if (!props.is_local && !props.is_reporting) return currencyId;
+
+  // Reporting → tenant base (is_base=true ISO member)
+  if (props.is_reporting) {
+    const base = await prisma.dimensionMember.findFirst({
+      where: {
+        tenantId,
+        dimensionId: member.dimensionId,
+        isActive: true,
+        properties: { path: ["is_base"], equals: true } as any,
+      },
+      select: { id: true },
+    });
+    return base?.id ?? null;
+  }
+
+  // Local → entity.base_currency
+  if (props.is_local) {
+    if (!entityId) return null;
+    const entity = await prisma.dimensionMember.findFirst({
+      where: { tenantId, id: entityId },
+      select: { properties: true },
+    });
+    const iso = (entity?.properties as any)?.base_currency;
+    if (!iso || typeof iso !== "string") return null;
+
+    const isoMember = await prisma.dimensionMember.findFirst({
+      where: {
+        tenantId,
+        dimensionId: member.dimensionId,
+        isActive: true,
+        properties: { path: ["iso_code"], equals: iso } as any,
+      },
+      select: { id: true },
+    });
+    return isoMember?.id ?? null;
+  }
+
+  return currencyId;
+}

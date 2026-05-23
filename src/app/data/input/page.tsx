@@ -59,6 +59,32 @@ async function fetchTenantFeatures(): Promise<Record<string, boolean>> {
   return j?.data?.flags ?? {};
 }
 
+// UD dim shape returned by the legacy /api/metadata/dimensions route. We
+// only need slot + name + isActive — slot is "UD1".."UD8" and tells us
+// which ud{N}Id field on FactRow to populate.
+type UdDim = { slot: string; name: string; members: Member[] };
+
+async function fetchEnabledUdDims(): Promise<UdDim[]> {
+  const r = await fetch(`/api/metadata/dimensions`, { credentials: "include" });
+  const j = await r.json().catch(() => null);
+  const rows: Array<{ slot: string; name: string; isActive: boolean }> = j?.data?.data ?? [];
+  const enabled = rows
+    .filter(d => d.isActive && /^UD[1-8]$/.test(d.slot))
+    .sort((a, b) => a.slot.localeCompare(b.slot));
+  // Hydrate members for each enabled UD
+  return Promise.all(enabled.map(async d => ({
+    slot: d.slot,
+    name: d.name,
+    members: await fetchDimMembers(d.slot.toLowerCase()),
+  })));
+}
+
+// "UD1" → "ud1Id" — used to key both the React selection map and the
+// querystring / POST body field names.
+function udField(slot: string): string {
+  return `${slot.toLowerCase()}Id`;
+}
+
 export default function DataInputPageWrapper() {
   return <Suspense fallback={<div />}><DataInputPage /></Suspense>;
 }
@@ -87,6 +113,13 @@ function DataInputPage() {
   const [originId,   setOriginId]   = useState<string>("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  // Enabled user-defined dimensions (UD1=Department, UD2=Cost Center, ...)
+  // Loaded once on mount via /api/metadata/dimensions. Each enabled UD
+  // renders a required POV picker — grid load is blocked until every UD
+  // has a member selected, since facts MUST include every enabled UD slot.
+  const [udDims, setUdDims] = useState<UdDim[]>([]);
+  const [udSelections, setUdSelections] = useState<Record<string, string>>({});
+
   // ─── Grid state ────────────────────────────────────────────────
   type GridData = { accounts: Account[]; months: Month[]; cellsByScenario: Map<string, Map<string, Cell>> };
   const [grid, setGrid] = useState<GridData | null>(null);
@@ -109,7 +142,7 @@ function DataInputPage() {
   // ─── Load POV options once ────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const [scns, ents, all_times, ccyMembers, icps_, orgs, features] = await Promise.all([
+      const [scns, ents, all_times, ccyMembers, icps_, orgs, features, uds] = await Promise.all([
         fetchDimMembers("scenario"),
         fetchDimMembers("entity"),
         fetchDimMembers("time", 500),
@@ -117,7 +150,19 @@ function DataInputPage() {
         fetchDimMembers("icp"),
         fetchDimMembers("origin"),
         fetchTenantFeatures(),
+        fetchEnabledUdDims(),
       ]);
+      setUdDims(uds);
+      // Auto-pick the first member of each UD so the grid loads cleanly on
+      // first visit. User can change pick before saving.
+      setUdSelections(prev => {
+        const next = { ...prev };
+        for (const ud of uds) {
+          const key = udField(ud.slot);
+          if (!next[key] && ud.members[0]) next[key] = ud.members[0].id;
+        }
+        return next;
+      });
       setScenarios(scns);
       setEntities(ents);
       setYears(all_times.filter(m => /^FY\d{4}$/.test(m.code)));
@@ -157,6 +202,12 @@ function DataInputPage() {
     if (!entityId || !yearCode) return;
     if (layout === "STANDARD" && !scenarioId) return;
     if ((layout === "VARIANCE" || layout === "SCENARIO_STACK") && (!form || form.scenarioIds.length === 0)) return;
+    // Each enabled UD must have a member picked. Otherwise the grid would
+    // mix all UD combos together (e.g. Department × Cost Center → wrong
+    // sums in every cell).
+    for (const ud of udDims) {
+      if (!udSelections[udField(ud.slot)]) return;
+    }
 
     setGridLoading(true);
     setError(null);
@@ -170,6 +221,14 @@ function DataInputPage() {
           if (currencyId) qs.set("currencyId", currencyId);
           if (icpId)      qs.set("icpId",      icpId);
           if (originId)   qs.set("originId",   originId);
+          // Pin each enabled UD onto the slice — required for intersection
+          // matching. Without this the GET would mash all UD combos into
+          // the displayed cells, which is wrong for EPM-style input.
+          for (const ud of udDims) {
+            const key = udField(ud.slot);
+            const v = udSelections[key];
+            if (v) qs.set(key, v);
+          }
           return fetch(`/api/v2/facts?${qs.toString()}`, { credentials: "include" }).then(r => r.json());
         })
       );
@@ -235,7 +294,7 @@ function DataInputPage() {
     if (formLoading) return;
     loadGrid();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formLoading, form, scenarioId, entityId, yearCode, currencyId, icpId, originId]);
+  }, [formLoading, form, scenarioId, entityId, yearCode, currencyId, icpId, originId, udSelections]);
 
   // ─── Cell save ────────────────────────────────────────────────
   async function saveCell(accountId: string, timeId: string, scId: string, valStr: string) {
@@ -252,6 +311,13 @@ function DataInputPage() {
       if (currencyId) body.currencyId = currencyId;
       if (icpId)      body.icpId      = icpId;
       if (originId)   body.originId   = originId;
+      // Include every enabled UD pick on the save so the FactRow lands at
+      // the right intersection (UD1=Department X, UD2=Cost Center Y, ...).
+      for (const ud of udDims) {
+        const key = udField(ud.slot);
+        const v = udSelections[key];
+        if (v) body[key] = v;
+      }
       const r = await fetch("/api/v2/facts", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -317,6 +383,18 @@ function DataInputPage() {
             )}
             <Pov label="Entity"   value={entityId}   options={entities} onChange={setEntityId} />
 
+            {/* Enabled user-defined dimensions (Department, Cost Center, ...).
+                Each is required — grid won't load until every one is picked. */}
+            {udDims.map(ud => (
+              <Pov
+                key={ud.slot}
+                label={ud.name}
+                value={udSelections[udField(ud.slot)] ?? ""}
+                options={ud.members}
+                onChange={(v) => setUdSelections(s => ({ ...s, [udField(ud.slot)]: v }))}
+              />
+            ))}
+
             <button
               onClick={() => setAdvancedOpen(o => !o)}
               className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-gray-100"
@@ -381,13 +459,24 @@ function DataInputPage() {
           </div>
         )}
 
-        {!grid && !gridLoading && !error && (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
-            <FileText className="mx-auto h-8 w-8 text-gray-400" />
-            <p className="mt-3 text-sm font-medium text-gray-700">Pick a POV to load the grid</p>
-            <p className="mt-1 text-xs text-muted-foreground">Year, Entity, and (for Standard) Scenario are required.</p>
-          </div>
-        )}
+        {!grid && !gridLoading && !error && (() => {
+          const missing: string[] = [];
+          if (!yearCode) missing.push("Year");
+          if (!entityId) missing.push("Entity");
+          if (layout === "STANDARD" && !scenarioId) missing.push("Scenario");
+          for (const ud of udDims) if (!udSelections[udField(ud.slot)]) missing.push(ud.name);
+          return (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
+              <FileText className="mx-auto h-8 w-8 text-gray-400" />
+              <p className="mt-3 text-sm font-medium text-gray-700">
+                {missing.length ? `Pick ${missing.join(", ")} to load the grid` : "Loading grid…"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Every enabled dimension must have a member selected before data input.
+              </p>
+            </div>
+          );
+        })()}
       </main>
     </>
   );
