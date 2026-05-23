@@ -23,7 +23,7 @@ import { audit } from "@/lib/audit-v2";
 import { ensureOriginMember, FORM_ORIGIN_CODE } from "@/lib/seed-origin";
 import { findNonLeafMembers } from "@/lib/leaf-check";
 import { ensureIcpSeed } from "@/lib/sync-icp";
-import { ensureBaseCurrencyMember } from "@/lib/seed-currency";
+import { ensureBaseCurrencyMember, resolveSemanticCurrency } from "@/lib/seed-currency";
 
 // ─── GET: load a POV slice into a {accounts × months} matrix ────────
 
@@ -96,9 +96,25 @@ export async function GET(req: NextRequest) {
     timeId: { in: monthIds },
     isCurrent: true,
   };
-  if (currencyId) factWhere.currencyId = currencyId;
+  // Resolve Local / Reporting semantic currencies before filtering. Facts
+  // are stored against concrete ISO members (USD, INR), never against
+  // Local/Reporting placeholders. Filtering by Local's UUID would match
+  // zero rows. See resolveSemanticCurrency for the resolution rules.
+  if (currencyId) {
+    const resolved = await resolveSemanticCurrency(auth.tid, currencyId, entityId);
+    if (resolved) factWhere.currencyId = resolved;
+    // resolved === null → resolution failed (e.g. Local picked but entity
+    // has no base_currency). Skip the filter rather than return empty.
+  }
   if (icpId)      factWhere.icpId      = icpId;
   if (originId)   factWhere.originId   = originId;
+
+  // Collect UD pin filters (?ud1Id=..&ud2Id=..). Empty/missing slots are
+  // treated as "don't filter on this UD" — same shape as currency/icp.
+  for (const slot of ["ud1Id","ud2Id","ud3Id","ud4Id","ud5Id","ud6Id","ud7Id","ud8Id"]) {
+    const v = url.searchParams.get(slot);
+    if (v) factWhere[slot] = v;
+  }
 
   const facts = await prisma.factRow.findMany({
     where: factWhere,
@@ -186,6 +202,20 @@ export async function POST(req: NextRequest) {
   let currencyId = input.currencyId;
   if (!currencyId) {
     currencyId = await ensureBaseCurrencyMember(auth.tid, auth.sub);
+  }
+  // If caller sent Local or Reporting (semantic placeholders), resolve
+  // them to the concrete ISO currency the fact should be STORED against.
+  // Without this, the FactRow would point at the Local/Reporting member id
+  // and the GET query (which also resolves) would never find it back.
+  const resolvedForSave = await resolveSemanticCurrency(auth.tid, currencyId, input.entityId);
+  if (resolvedForSave) {
+    currencyId = resolvedForSave;
+  } else {
+    // Caller picked Local but the entity has no base_currency set. Fall
+    // back to the tenant base so the save doesn't error.
+    currencyId = await ensureBaseCurrencyMember(auth.tid, auth.sub);
+    const base = await resolveSemanticCurrency(auth.tid, currencyId, input.entityId);
+    if (base) currencyId = base;
   }
 
   let icpId = input.icpId;
