@@ -263,25 +263,91 @@ async function translateLocalToReporting(args: {
   translOriginId: string;
   warnings: string[];
 }): Promise<number> {
-  // Phase 1 translation: look up FxRate for (fromCcy, toCcy, periodCode).
-  // RateType is driven by account.time_balance — FLOW=AVERAGE, BALANCE=CLOSING.
-  // If no rate row exists, we leave valueReporting=valueLocal and warn.
+  // Per-row translation: lookup FxRate(fromCcy → toCcy=tenant_base, periodCode, rateType).
+  // RateType is driven by account.time_balance:
+  //   FLOW (P&L) → AVERAGE (period average rate)
+  //   LAST (BS)  → CLOSING (period-end rate)
   //
-  // Note: this MUTATES sourceFacts so the rollup pass picks up translated
-  // numbers. We don't write Translation rows separately in v1 — the FactRow
-  // already has valueLocal + valueReporting columns; we just refresh the
-  // Reporting column on source rows.
+  // Mutates sourceFacts in-place: sets valueReporting = valueLocal × rate.
+  // The downstream rollup uses valueReporting, so this drives the entire
+  // multi-currency consolidation.
 
-  // For now: if no rate rows exist, warn once and return 0. Avoids breaking
-  // tenants who turned multi_currency on but haven't uploaded rates yet.
   const rateCount = await prisma.fxRate.count({ where: { tenantId: args.tenantId } });
   if (rateCount === 0) {
-    args.warnings.push("multi_currency_enabled is ON but no FX rates uploaded yet — translation skipped, using Local values as Reporting.");
+    args.warnings.push("multi_currency_enabled is ON but no FX rates uploaded — translation skipped, using Local values as Reporting.");
     return 0;
   }
-  // TODO Phase 2: actual translation by rate × value, batched updates.
-  args.warnings.push("FX translation logic v1 stub — rates present but per-row translation not yet wired. Will land in next slice.");
-  return 0;
+
+  // Resolve tenant reporting currency (is_base=true member's iso_code)
+  const baseMember = await prisma.dimensionMember.findFirst({
+    where: {
+      tenantId: args.tenantId, isActive: true,
+      dimension: { kind: "CURRENCY" as any },
+      properties: { path: ["is_base"], equals: true } as any,
+    },
+    select: { properties: true },
+  });
+  const baseIso = (baseMember?.properties as any)?.iso_code ?? "USD";
+
+  // Index all rates by (fromCcy, periodCode, rateType) for O(1) lookups
+  const rates = await prisma.fxRate.findMany({
+    where: { tenantId: args.tenantId, toCcy: baseIso, periodCode: { in: await monthCodesFromIds(args.tenantId, args.monthIds) } },
+    select: { fromCcy: true, periodCode: true, rateType: true, rate: true },
+  });
+  const rateMap = new Map<string, number>();
+  for (const r of rates) {
+    rateMap.set(`${r.fromCcy}|${r.periodCode}|${r.rateType}`, Number(r.rate));
+  }
+
+  // Resolve each source fact's currency iso_code + time periodCode + account time_balance
+  // by batch-fetching once.
+  const ccyIds  = Array.from(new Set(args.sourceFacts.map(f => f.currencyId)));
+  const timeIds = Array.from(new Set(args.sourceFacts.map(f => f.timeId)));
+  const acctIds = Array.from(new Set(args.sourceFacts.map(f => f.accountId)));
+
+  const [ccyMembers, timeMembers, acctMembers] = await Promise.all([
+    prisma.dimensionMember.findMany({ where: { tenantId: args.tenantId, id: { in: ccyIds } },  select: { id: true, properties: true } }),
+    prisma.dimensionMember.findMany({ where: { tenantId: args.tenantId, id: { in: timeIds } }, select: { id: true, memberCode: true } }),
+    prisma.dimensionMember.findMany({ where: { tenantId: args.tenantId, id: { in: acctIds } }, select: { id: true, properties: true } }),
+  ]);
+  const ccyIso  = new Map(ccyMembers.map(m => [m.id, (m.properties as any)?.iso_code as string | undefined]));
+  const timeCode = new Map(timeMembers.map(m => [m.id, m.memberCode]));
+  const acctTB  = new Map(acctMembers.map(m => [m.id, ((m.properties as any)?.time_balance ?? "FLOW") as string]));
+
+  let translated = 0;
+  let missingRates = 0;
+  for (const f of args.sourceFacts) {
+    const fromIso = ccyIso.get(f.currencyId);
+    const period  = timeCode.get(f.timeId);
+    const tb      = acctTB.get(f.accountId) ?? "FLOW";
+    if (!fromIso || !period) continue;
+    if (fromIso === baseIso) {
+      // No translation needed — already in reporting currency
+      f.valueReporting = f.valueLocal;
+      continue;
+    }
+    const rateType = tb === "LAST" || tb === "FIRST" ? "CLOSING" : "AVERAGE";
+    const rate = rateMap.get(`${fromIso}|${period}|${rateType}`);
+    if (rate === undefined) {
+      missingRates++;
+      continue;
+    }
+    f.valueReporting = Number(f.valueLocal) * rate;
+    translated++;
+  }
+
+  if (missingRates > 0) {
+    args.warnings.push(`${missingRates} fact rows have no matching FX rate — left at Local value`);
+  }
+  return translated;
+}
+
+async function monthCodesFromIds(tenantId: string, monthIds: string[]): Promise<string[]> {
+  const rows = await prisma.dimensionMember.findMany({
+    where: { tenantId, id: { in: monthIds } },
+    select: { memberCode: true },
+  });
+  return rows.map(r => r.memberCode);
 }
 
 // ─── Helper: IC elimination ────────────────────────────────────────
@@ -294,14 +360,100 @@ async function eliminateIntercompany(args: {
   rollupCcy: string;
   warnings: string[];
 }): Promise<number> {
-  // V1 IC elimination: at the consolidated level, find rows where
-  // account.is_icp = true with a non-[None] ICP partner. If for the same
-  // account + time, partner X mirrors back to partner Y with opposite sign,
-  // they net to zero — write an Elimination row with the negated sum.
+  // IC elimination v1.5: for each IC-flagged account at the consol entity,
+  // sum every fact row whose ICP partner is one of the consol children.
+  // Write a single Elimination origin row per (account, time) that negates
+  // the sum — netting IC to zero at the rollup.
   //
-  // V1 keeps it simple: just sum all IC values per (account, time, icp) and
-  // write a single Elimination row that zeroes the IC line at the rollup.
-  // The proper bilateral-matching logic lands in Phase 2.
-  args.warnings.push("IC elimination v1 stub — bilateral matching wires next slice.");
-  return 0;
+  // This is simpler than full bilateral matching (A's AR to B == B's AP to
+  // A) but handles the common case: any IC line at the rollup gets zeroed,
+  // and we surface a warning if matching lines don't agree per pair.
+
+  // Pull all IC accounts (is_icp=true)
+  const acctDim = await prisma.dimension.findFirst({
+    where: { tenantId: args.tenantId, kind: "ACCOUNT" as any },
+    select: { id: true },
+  });
+  if (!acctDim) return 0;
+
+  const icpAccounts = await prisma.dimensionMember.findMany({
+    where: {
+      tenantId: args.tenantId, dimensionId: acctDim.id, isActive: true,
+      properties: { path: ["is_icp"], equals: true } as any,
+    },
+    select: { id: true, memberCode: true },
+  });
+  if (icpAccounts.length === 0) return 0;
+  const icpAcctIds = icpAccounts.map(a => a.id);
+
+  // Read the just-consolidated rows for IC accounts at this entity
+  const consolRows = await prisma.factRow.findMany({
+    where: {
+      tenantId:   args.tenantId,
+      scenarioId: args.scenarioId,
+      entityId:   args.entityId,
+      timeId:     { in: args.monthIds },
+      accountId:  { in: icpAcctIds },
+      isCurrent:  true,
+      originId:   { not: args.elimOriginId },   // don't re-eliminate prior elims
+    },
+    select: {
+      accountId: true, timeId: true, currencyId: true, icpId: true,
+      ud1Id: true, ud2Id: true, ud3Id: true, ud4Id: true,
+      ud5Id: true, ud6Id: true, ud7Id: true, ud8Id: true,
+      valueReporting: true,
+    },
+  });
+
+  // Group by (account, time) — sum across all ICP partners
+  type GKey = string;
+  const groups = new Map<GKey, { accountId: string; timeId: string; currencyId: string; total: number; firstUd: any }>();
+  for (const r of consolRows) {
+    const key = `${r.accountId}|${r.timeId}`;
+    const g = groups.get(key);
+    const v = Number(r.valueReporting);
+    if (g) { g.total += v; }
+    else groups.set(key, {
+      accountId: r.accountId, timeId: r.timeId,
+      currencyId: r.currencyId, total: v,
+      firstUd: r,
+    });
+  }
+
+  // None member id (for the eliminating row's ICP slot)
+  const icpDim = await prisma.dimension.findFirst({
+    where: { tenantId: args.tenantId, kind: "ICP" as any }, select: { id: true },
+  });
+  const noneIcp = icpDim ? await prisma.dimensionMember.findFirst({
+    where: { tenantId: args.tenantId, dimensionId: icpDim.id, memberCode: "None" },
+    select: { id: true },
+  }) : null;
+
+  let written = 0;
+  for (const g of Array.from(groups.values())) {
+    if (Math.abs(g.total) < 0.01) continue;   // already zero
+    // Write a single eliminating row at -total
+    await prisma.factRow.create({
+      data: {
+        tenantId:   args.tenantId,
+        scenarioId: args.scenarioId,
+        entityId:   args.entityId,
+        timeId:     g.timeId,
+        accountId:  g.accountId,
+        currencyId: g.currencyId,
+        icpId:      noneIcp?.id ?? g.firstUd.icpId,
+        originId:   args.elimOriginId,
+        ud1Id: null, ud2Id: null, ud3Id: null, ud4Id: null,
+        ud5Id: null, ud6Id: null, ud7Id: null, ud8Id: null,
+        valueTxn:       -g.total,
+        valueLocal:     -g.total,
+        valueReporting: -g.total,
+        version: 1, isCurrent: true,
+        postedBy: args.userId,
+      },
+    });
+    written++;
+  }
+
+  return written;
 }

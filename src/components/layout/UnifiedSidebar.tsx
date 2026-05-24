@@ -56,6 +56,7 @@ const DATA_LOAD_NAV = [
 const PROCESS_NAV = [
   { href: "/process",                  label: "Overview",            icon: Cpu },
   { href: "/process/consolidation",    label: "Consolidation",       icon: GitBranch },
+  { href: "/process/fx-rates",         label: "FX Rates",            icon: DollarSign },
 ];
 
 // Read / format / present

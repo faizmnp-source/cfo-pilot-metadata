@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
-import { GitBranch, Globe, Layers, Calculator, ArrowRight, ShieldCheck } from "lucide-react";
+import { GitBranch, Globe, Layers, Calculator, ArrowRight, ShieldCheck, DollarSign } from "lucide-react";
 
 const PROCESS_TYPES = [
   {
@@ -16,6 +16,15 @@ const PROCESS_TYPES = [
     color:       "bg-violet-50 text-violet-700 border-violet-100",
     status:      "ready",
     description: "Walks the Entity hierarchy, sums leaf facts to the parent, applies FX translation (if multi-currency on) and IC eliminations (if intercompany on).",
+  },
+  {
+    href:        "/process/fx-rates",
+    title:       "FX Rates",
+    subtitle:    "Manage currency conversion rates",
+    icon:        DollarSign,
+    color:       "bg-green-50 text-green-700 border-green-100",
+    status:      "ready",
+    description: "Maintain CLOSING and AVERAGE rates per currency × period. Used by Consolidation when multi-currency translation runs.",
   },
   {
     href:        "#",
