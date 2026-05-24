@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ReportLayout, formatMoney } from "./ReportLayout";
 import { ReportBody } from "./ReportBody";
 import { MethodologyCard } from "./MethodologyCard";
+import { AiNarrativePanel } from "./AiNarrativePanel";
 
 type Kind = "trial-balance" | "income-statement" | "balance-sheet" | "cash-flow";
 
@@ -65,6 +66,7 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
       {data?.sections && (kind === "income-statement" || kind === "balance-sheet") && (
         <KpiStripFromSections sections={data.sections} totals={data.totals} ccy={ccy} kind={kind} />
       )}
+      {data && <AiNarrativePanel kind={kind} report={data} ccy={ccy} />}
       {data?.sections && <ReportBody sections={data.sections} ccy={ccy} />}
     </ReportLayout>
   );
