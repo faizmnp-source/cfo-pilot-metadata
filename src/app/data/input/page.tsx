@@ -180,12 +180,7 @@ function DataInputPage() {
         : ccyMembers.find(c => c.isReporting) ?? ccyMembers.find(c => c.isBase) ?? ccyMembers[0];
       if (preferred?.id) setCurrencyId(prev => prev || preferred.id);
       const none = icps_.find(m => m.code === "None"); if (none) setIcpId(prev => prev || none.id);
-      // Origin POV intentionally left blank by default. If we pin it to
-      // 'Form', any rows written by the Consolidation process (origin=
-      // Consolidation/Elimination) become invisible to users who switch to
-      // a parent entity. Leave it as "— pick —" so GET returns every
-      // origin for the intersection. Users can still filter explicitly via
-      // the Advanced filters.
+      const formO = orgs.find(m => m.code === "Form");  if (formO) setOriginId(prev => prev || formO.id);
       const fy   = all_times.find(m => /^FY\d{4}$/.test(m.code)); if (fy) setYearCode(prev => prev || fy.code);
     })().catch(e => setError(String(e)));
   }, []);
