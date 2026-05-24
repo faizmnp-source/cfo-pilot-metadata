@@ -6,7 +6,7 @@ import {
   FileText, Table2, Sparkles, Bell, Settings, ChevronLeft, ChevronRight,
   Navigation, BookOpen, Building2, GitBranch, Layers, Upload, ShieldCheck,
   History, LogOut, DollarSign, Globe, Clock, Link2, FolderKanban, Settings2,
-  Pencil,
+  Pencil, FileSpreadsheet, Cpu, Receipt, Scale, TrendingDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -44,6 +44,27 @@ const META_NAV_BOTTOM = [
   { href: "/metadata/audit-logs",  label: "Audit Logs",           icon: History },
   { href: "/metadata/dimensions",  label: "Configure Dimensions", icon: Settings2 },
   { href: "/metadata/settings",    label: "App Settings",         icon: Settings },
+];
+
+// Bring data INTO the app
+const DATA_LOAD_NAV = [
+  { href: "/data/load",                label: "Overview",            icon: FileSpreadsheet },
+  { href: "/data/load/facts-import",   label: "Excel / CSV Import",  icon: Upload },
+];
+
+// Compute / transform existing data
+const PROCESS_NAV = [
+  { href: "/process",                  label: "Overview",            icon: Cpu },
+  { href: "/process/consolidation",    label: "Consolidation",       icon: GitBranch },
+];
+
+// Read / format / present
+const REPORTS_NAV = [
+  { href: "/reports",                  label: "Overview",            icon: FileText },
+  { href: "/reports/income-statement", label: "Income Statement",    icon: TrendingDown },
+  { href: "/reports/balance-sheet",    label: "Balance Sheet",       icon: Scale },
+  { href: "/reports/trial-balance",    label: "Trial Balance",       icon: Receipt },
+  { href: "/reports/cash-flow",        label: "Cash Flow",           icon: BookOpen },
 ];
 
 interface UnifiedSidebarProps {
@@ -195,6 +216,72 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
             })}
           </>
         )}
+
+        {/* Data Load — bring data IN */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">Data Load</p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {DATA_LOAD_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Process — compute on existing data */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">Process</p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {PROCESS_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Reports — read / present */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">Reports</p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {REPORTS_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
 
         {/* Bottom meta nav */}
         <div className={cn("my-2 border-t border-[var(--border-default)]", collapsed && "mx-2")} />
