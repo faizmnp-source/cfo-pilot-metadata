@@ -12,8 +12,11 @@
 import { prisma } from "./prisma";
 import { ensureDimension } from "./ensure-dimension";
 
-export const IMPORT_ORIGIN_CODE = "Import";
-export const FORM_ORIGIN_CODE   = "Form";
+export const IMPORT_ORIGIN_CODE       = "Import";
+export const FORM_ORIGIN_CODE         = "Form";
+export const CONSOLIDATION_ORIGIN_CODE = "Consolidation";
+export const ELIMINATION_ORIGIN_CODE   = "Elimination";
+export const TRANSLATION_ORIGIN_CODE   = "Translation";
 
 type SeedSpec = {
   code:        string;
@@ -23,8 +26,11 @@ type SeedSpec = {
 };
 
 const SEED_ORIGINS: SeedSpec[] = [
-  { code: IMPORT_ORIGIN_CODE, name: "Import", description: "Facts loaded from an external file (TB, GL, journal export)", origin_type: "IMPORT" },
-  { code: FORM_ORIGIN_CODE,   name: "Form",   description: "Facts entered directly through the Data Input form",           origin_type: "FORM" },
+  { code: IMPORT_ORIGIN_CODE,        name: "Import",        description: "Facts loaded from an external file (TB, GL, journal export)", origin_type: "IMPORT" },
+  { code: FORM_ORIGIN_CODE,          name: "Form",          description: "Facts entered directly through the Data Input form",          origin_type: "FORM" },
+  { code: CONSOLIDATION_ORIGIN_CODE, name: "Consolidation", description: "Rollup facts written by the Consolidation process",            origin_type: "CONSOL" },
+  { code: ELIMINATION_ORIGIN_CODE,   name: "Elimination",   description: "Intercompany elimination netting written during consolidation", origin_type: "ELIM" },
+  { code: TRANSLATION_ORIGIN_CODE,   name: "Translation",   description: "FX-translated facts (Local → Reporting) written during consolidation", origin_type: "TRANSLATION" },
 ];
 
 /**
@@ -57,7 +63,7 @@ export async function ensureOriginMember(
         memberName:  s.name,
         description: s.description,
         isActive:    true,
-        sortOrder:   s.code === IMPORT_ORIGIN_CODE ? 0 : 1,
+        sortOrder:   SEED_ORIGINS.findIndex(o => o.code === s.code),
         properties:  { origin_type: s.origin_type, is_system: true } as any,
         createdBy:   userId,
         updatedBy:   userId,

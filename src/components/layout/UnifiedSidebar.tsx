@@ -6,7 +6,7 @@ import {
   FileText, Table2, Sparkles, Bell, Settings, ChevronLeft, ChevronRight,
   Navigation, BookOpen, Building2, GitBranch, Layers, Upload, ShieldCheck,
   History, LogOut, DollarSign, Globe, Clock, Link2, FolderKanban, Settings2,
-  Pencil,
+  Pencil, FileSpreadsheet, Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -36,6 +36,19 @@ const META_NAV_CORE = [
   { href: "/metadata/library", label: "Dimension Library", icon: BookOpen },
   { href: "/data/forms",       label: "Data Forms",        icon: FolderKanban },
   { href: "/data/input",       label: "Data Input",        icon: Pencil },
+];
+
+// Two new top-level groups — Data Load (bring data IN) and Process (compute
+// on existing data). Keep them separate so users understand the difference:
+// import = new data; process = transform existing data.
+const DATA_LOAD_NAV = [
+  { href: "/data/load",                label: "Overview",            icon: FileSpreadsheet },
+  { href: "/data/load/facts-import",   label: "Excel / CSV Import",  icon: Upload },
+];
+
+const PROCESS_NAV = [
+  { href: "/process",                  label: "Overview",            icon: Cpu },
+  { href: "/process/consolidation",    label: "Consolidation",       icon: GitBranch },
 ];
 
 const META_NAV_BOTTOM = [
@@ -195,6 +208,54 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
             })}
           </>
         )}
+
+        {/* Data Load section — bring data IN */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
+            Data Load
+          </p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {DATA_LOAD_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Process section — compute on existing data */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
+            Process
+          </p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {PROCESS_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
 
         {/* Bottom meta nav */}
         <div className={cn("my-2 border-t border-[var(--border-default)]", collapsed && "mx-2")} />

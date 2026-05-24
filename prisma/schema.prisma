@@ -142,6 +142,9 @@ model Tenant {
   auditLogs       AuditLog[]
   factRows        FactRow[]
   dataForms       DataForm[]
+  fxRates         FxRate[]
+  processRuns     ProcessRun[]
+  loadBatches     LoadBatch[]
 
   @@index([slug])
   @@map("tenants")
@@ -503,9 +506,116 @@ model DataForm {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// FX Rates — manual upload per (fromCcy, toCcy, period). Phase 2 = live
+// API. Translation reads rateType per Account.time_balance (FLOW = avg,
+// BALANCE = closing). Rate values stored as Decimal for exactness — never
+// cast to Float anywhere in the codebase, or you get sub-cent drift on
+// large balances.
+// ═══════════════════════════════════════════════════════════════════
+
+model FxRate {
+  id          String   @id @default(uuid())
+  tenantId    String
+
+  // ISO codes — string not member id, so the same rate row is reusable
+  // across tenants in future shared-rates feature.
+  fromCcy     String                                // e.g. "INR"
+  toCcy       String                                // e.g. "USD"
+  periodCode  String                                // e.g. "2026M01" — links to Time member code
+  rateType    String   @default("CLOSING")          // CLOSING | AVERAGE | OPENING | HISTORICAL
+  rate        Decimal  @db.Decimal(28, 12)          // 1 fromCcy = rate * toCcy
+
+  source      String?                               // 'manual' | 'rbi_scrape' | 'ecb_api' — provenance for audit
+  uploadedBy  String
+  uploadedAt  DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // One rate per (tenant, pair, period, rateType) — re-upload supersedes
+  @@unique([tenantId, fromCcy, toCcy, periodCode, rateType], name: "fx_rate_key")
+  @@index([tenantId, periodCode])
+  @@map("fx_rates")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Process runs — every Consolidation / Translation / Allocation / Import
+// run goes here. Powers the run-history view and lets us re-run / diff
+// previous runs. Status drives the badge on the launcher screen.
+// ═══════════════════════════════════════════════════════════════════
+
+model ProcessRun {
+  id          String   @id @default(uuid())
+  tenantId    String
+
+  // What kind of process. Strings (not enum) so we can add new process
+  // types without a migration. Known values:
+  //   'CONSOLIDATION' | 'TRANSLATION' | 'ALLOCATION' | 'CALC' |
+  //   'FACTS_IMPORT' | 'METADATA_IMPORT' | 'ELIMINATION'
+  kind        String
+
+  // Input parameters as JSON — shape depends on `kind`. For
+  // CONSOLIDATION: { scenarioId, entityId, yearCode }. Keep it flexible
+  // so each process type can carry its own params.
+  params      Json     @default("{}")
+
+  // Lifecycle. Sync runs go QUEUED → RUNNING → SUCCEEDED/FAILED in one
+  // request. Async (future) sits in QUEUED then a worker picks it up.
+  status      String   @default("QUEUED")           // QUEUED | RUNNING | SUCCEEDED | FAILED
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  // Result counts so the history table can show "Read 1,200 / wrote 80"
+  // without needing to re-query the underlying tables.
+  rowsRead    Int?
+  rowsWritten Int?
+  rowsErrored Int?
+
+  // Free-text error trail for failed runs (top of stack, truncated).
+  error       String?
+
+  // Optional human-readable summary the engine writes on success — e.g.
+  // "Consolidated 3 entities across 12 months, eliminated 4 IC pairs".
+  summary     String?
+
+  // Versioned snapshot of the metadata at run time (for replay/diff).
+  metadataSnapshot Json?
+
+  startedBy   String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind, startedAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@map("process_runs")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Load batches — every file import gets a batch row. FactRow.loadBatchId
+// FKs here so we can audit "which row came from which file" and support
+// roll-back-by-batch in Phase 2.
+// ═══════════════════════════════════════════════════════════════════
+
+model LoadBatch {
+  id            String   @id @default(uuid())
+  tenantId      String
+  processRunId  String?                              // links to the ProcessRun for unified history
+  filename      String
+  fileSize      Int
+  mimeType      String?
+  rowsTotal     Int
+  rowsCommitted Int
+  uploadedBy    String
+  uploadedAt    DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, uploadedAt(sort: Desc)])
+  @@map("load_batches")
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // WHAT'S INTENTIONALLY NOT IN THIS DRAFT (deferred per Faizan):
-//   - mapping rules (next slice — file-import path)
-//   - FX rates table (only if multi_currency_enabled flips on)
-//   - load_batch staging table (next slice — file-import path)
+//   - mapping rules (next slice — file-import path, post v1)
+//   - load_batch row-detail (raw rows, errors per row) — added when import scales
 //   - Postgres RLS policies (separate migration after schema lock)
+//   - AI cache table (separate slice with /api/v2/ai gateway)
 // ═══════════════════════════════════════════════════════════════════
