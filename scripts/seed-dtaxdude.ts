@@ -180,17 +180,14 @@ async function upsertMember(args: {
   properties?: Record<string, any>;
   sortOrder?: number;
 }) {
-  const existing = await prisma.dimensionMember.findFirst({
-    where: { tenantId: TENANT_ID, dimensionId: args.dimensionId, memberCode: args.code },
-  });
-  if (existing) {
-    return prisma.dimensionMember.update({
-      where: { id: existing.id },
-      data: { memberName: args.name, properties: args.properties ?? {}, sortOrder: args.sortOrder ?? 0, isActive: true, updatedBy: SEED_USER_ID },
-    });
-  }
-  return prisma.dimensionMember.create({
-    data: {
+  // Use the composite unique key (tenantId, dimensionId, memberCode) for a
+  // race-free upsert. The findFirst-then-create pattern could double-create
+  // members during a seed re-run if wipe didn't fully clear (e.g. leftover
+  // members from a different dimension definition for the same kind).
+  return prisma.dimensionMember.upsert({
+    where: { tenantId_dimensionId_memberCode: { tenantId: TENANT_ID, dimensionId: args.dimensionId, memberCode: args.code } },
+    update: { memberName: args.name, properties: (args.properties ?? {}) as any, sortOrder: args.sortOrder ?? 0, isActive: true, updatedBy: SEED_USER_ID },
+    create: {
       tenantId: TENANT_ID, dimensionId: args.dimensionId,
       memberCode: args.code, memberName: args.name,
       properties: (args.properties ?? {}) as any,
