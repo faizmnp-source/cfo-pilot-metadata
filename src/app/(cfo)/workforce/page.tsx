@@ -12,6 +12,7 @@
 // v2 will add: org chart, hire/term timeline, comp roll-forward.
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Users, Plus, TrendingUp, DollarSign, Briefcase, RefreshCw, Loader2, Sparkles, Calculator, ChevronRight } from "lucide-react";
 
 type Position = { id: string; memberCode: string; memberName: string; properties: any };
@@ -101,16 +102,18 @@ export default function WorkforcePage() {
           {positions.length > 0 && (
             <ul className="divide-y divide-stone-100">
               {positions.map(p => (
-                <li key={p.id} className="px-4 py-3 hover:bg-stone-50 flex items-center gap-3">
-                  <Briefcase className="w-4 h-4 text-stone-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-stone-900">{p.memberName}</p>
-                    <p className="text-[11px] text-stone-500 font-mono">{p.memberCode} {p.properties?.department && `· ${p.properties.department}`} {p.properties?.level && `· ${p.properties.level}`}</p>
-                  </div>
-                  {p.properties?.baseSalary && (
-                    <span className="text-xs text-stone-700 font-semibold">{Number(p.properties.baseSalary).toLocaleString()} base</span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-stone-300" />
+                <li key={p.id}>
+                  <Link href={`/workforce/${p.id}`} className="px-4 py-3 hover:bg-stone-50 flex items-center gap-3 group">
+                    <Briefcase className="w-4 h-4 text-stone-400" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-stone-900 group-hover:text-emerald-700">{p.memberName}</p>
+                      <p className="text-[11px] text-stone-500 font-mono">{p.memberCode} {p.properties?.department && `· ${p.properties.department}`} {p.properties?.level && `· ${p.properties.level}`}</p>
+                    </div>
+                    {p.properties?.baseSalary && (
+                      <span className="text-xs text-stone-700 font-semibold">{Number(p.properties.baseSalary).toLocaleString()} base</span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-stone-300 group-hover:text-emerald-500" />
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -177,6 +180,12 @@ function AddPositionModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
   const [name, setName] = useState("");
   const [dept, setDept] = useState("");
   const [level, setLevel] = useState("");
+  const [location, setLocation] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [managerCode, setManagerCode] = useState("");
+  const [hireDate, setHireDate] = useState("");
+  const [termDate, setTermDate] = useState("");
+  const [employmentType, setEmploymentType] = useState("full-time");
   const [base, setBase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +199,17 @@ function AddPositionModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           memberCode: code, memberName: name,
-          properties: { department: dept || undefined, level: level || undefined, baseSalary: base ? parseFloat(base) : undefined },
+          properties: {
+            department:      dept || undefined,
+            level:           level || undefined,
+            location:        location || undefined,
+            employee_id:     employeeId || undefined,
+            manager_position_code: managerCode || undefined,
+            hire_date:       hireDate || undefined,
+            term_date:       termDate || undefined,
+            employment_type: employmentType,
+            baseSalary:      base ? parseFloat(base) : undefined,
+          },
         }),
       });
       const j = await r.json();
@@ -202,24 +221,44 @@ function AddPositionModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl max-w-xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2 mb-4">
           <Briefcase className="w-4 h-4 text-emerald-600" /> Add position
         </h2>
+        <p className="text-[11px] text-stone-500 mb-4">A position = one seat. People (employees) sit inside via the employee_id property. One seat may turn over multiple people over time.</p>
         <div className="space-y-3">
-          <Field label="Code" value={code} onChange={setCode} placeholder="ENG-001" />
-          <Field label="Name" value={name} onChange={setName} placeholder="Senior Engineer — Bangalore" />
           <div className="grid grid-cols-2 gap-2">
+            <Field label="Position code" value={code} onChange={setCode} placeholder="ENG-001" />
+            <Field label="Position name" value={name} onChange={setName} placeholder="Senior Engineer" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
             <Field label="Department" value={dept} onChange={setDept} placeholder="Engineering" />
             <Field label="Level" value={level} onChange={setLevel} placeholder="L4" />
+            <Field label="Location" value={location} onChange={setLocation} placeholder="Bangalore" />
           </div>
-          <Field label="Base salary (monthly, local ccy)" value={base} onChange={setBase} placeholder="500000" />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Current employee ID" value={employeeId} onChange={setEmployeeId} placeholder="E-12345 (blank = open req)" />
+            <Field label="Manager position code" value={managerCode} onChange={setManagerCode} placeholder="ENG-MGR-001" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Hire date" value={hireDate} onChange={setHireDate} placeholder="2026-01-15" type="date" />
+            <Field label="Term date (if applicable)" value={termDate} onChange={setTermDate} placeholder="" type="date" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] uppercase font-semibold text-stone-500 tracking-wide">Employment type</label>
+              <select value={employmentType} onChange={e => setEmploymentType(e.target.value)} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm">
+                {["full-time","part-time","contractor","intern","fractional"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <Field label="Base salary (monthly, local ccy)" value={base} onChange={setBase} placeholder="500000" />
+          </div>
           {error && <p className="text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded">⚠ {error}</p>}
         </div>
         <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-stone-100">
           <button onClick={onClose} className="px-3 py-1.5 rounded text-xs text-stone-600 hover:bg-stone-100">Cancel</button>
           <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-40">
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add position
           </button>
         </div>
       </div>
@@ -227,11 +266,11 @@ function AddPositionModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (s: string) => void; placeholder?: string }) {
+function Field({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (s: string) => void; placeholder?: string; type?: string }) {
   return (
     <div>
       <label className="text-[10px] uppercase font-semibold text-stone-500 tracking-wide">{label}</label>
-      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm focus:outline-none focus:border-emerald-400" />
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm focus:outline-none focus:border-emerald-400" />
     </div>
   );
 }

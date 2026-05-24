@@ -32,10 +32,26 @@ export async function POST(req: NextRequest) {
 
   const accountIds      = Array.isArray(body.accountIds)       ? body.accountIds       : [];
   const entityIds       = Array.isArray(body.entityIds)        ? body.entityIds        : [];
-  const historyPeriods  = Array.isArray(body.historyPeriods)   ? body.historyPeriods   : [];
-  const futurePeriods   = Array.isArray(body.futurePeriods)    ? body.futurePeriods    : [];
+  let historyPeriods  = Array.isArray(body.historyPeriods)   ? body.historyPeriods   : [];
+  let futurePeriods   = Array.isArray(body.futurePeriods)    ? body.futurePeriods    : [];
+
+  // Convenience: if user passes a single Time member code (year/quarter/half/month)
+  // instead of an explicit array, resolve to leaf months via the universal resolver.
+  if (body.historyTimeCode && historyPeriods.length === 0) {
+    const { resolveTimeMembersToLeafMonths } = await import("@/lib/reports/time-resolver");
+    const { leafMonthIds } = await resolveTimeMembersToLeafMonths(auth.tid, body.historyTimeCode);
+    const months = await prisma.dimensionMember.findMany({ where: { id: { in: leafMonthIds }}, select: { memberCode: true }});
+    historyPeriods = months.map(m => m.memberCode).sort();
+  }
+  if (body.futureTimeCode && futurePeriods.length === 0) {
+    const { resolveTimeMembersToLeafMonths } = await import("@/lib/reports/time-resolver");
+    const { leafMonthIds } = await resolveTimeMembersToLeafMonths(auth.tid, body.futureTimeCode);
+    const months = await prisma.dimensionMember.findMany({ where: { id: { in: leafMonthIds }}, select: { memberCode: true }});
+    futurePeriods = months.map(m => m.memberCode).sort();
+  }
+
   if (!accountIds.length || !entityIds.length || !historyPeriods.length || !futurePeriods.length) {
-    return apiError("accountIds, entityIds, historyPeriods, futurePeriods all required (non-empty arrays)", 400);
+    return apiError("accountIds, entityIds + (historyPeriods OR historyTimeCode) + (futurePeriods OR futureTimeCode) required", 400);
   }
   const method = String(body.method ?? "RUN_RATE") as any;
   const params = body.params ?? {};

@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, Play, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { TimePOVPicker } from "@/components/reports/TimePOVPicker";
 
 type Member = { id: string; memberCode: string; memberName: string; isActive?: boolean };
 
@@ -26,10 +27,9 @@ export default function ForecastingPage() {
   const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
   const [historyScenario, setHistoryScenario] = useState("ACTUAL");
   const [targetScenario,  setTargetScenario]  = useState("FORECAST");
-  const [historyStart, setHistoryStart] = useState("");
-  const [historyEnd,   setHistoryEnd]   = useState("");
-  const [futureStart,  setFutureStart]  = useState("");
-  const [futureEnd,    setFutureEnd]    = useState("");
+  // Time POV: pick ANY Time member (FY2026 / FY2026H1 / FY2026Q3 / 2026-04)
+  const [historyTimeCode, setHistoryTimeCode] = useState("FY2026H1");
+  const [futureTimeCode,  setFutureTimeCode]  = useState("FY2026H2");
   const [method, setMethod] = useState<"RUN_RATE" | "GROWTH_PCT" | "LINEAR_TREND">("RUN_RATE");
   const [growthPct, setGrowthPct] = useState(0.05);
   const [basisN, setBasisN] = useState(3);
@@ -53,20 +53,10 @@ export default function ForecastingPage() {
     }).catch(e => setError(String(e)));
   }, []);
 
-  function periodsBetween(start: string, end: string): string[] {
-    if (!start || !end) return [];
-    const startIdx = periods.findIndex(p => p.memberCode === start);
-    const endIdx   = periods.findIndex(p => p.memberCode === end);
-    if (startIdx < 0 || endIdx < 0 || startIdx > endIdx) return [];
-    return periods.slice(startIdx, endIdx + 1).map(p => p.memberCode);
-  }
-
   async function runForecast() {
     setError(null); setResult(null); setRunning(true);
     try {
-      const historyPeriods = periodsBetween(historyStart, historyEnd);
-      const futurePeriods  = periodsBetween(futureStart, futureEnd);
-      if (!historyPeriods.length || !futurePeriods.length) throw new Error("Pick valid history + future period ranges");
+      if (!historyTimeCode || !futureTimeCode) throw new Error("Pick history + future Time POV");
       if (!selectedAccounts.length) throw new Error("Pick at least one account");
       if (!selectedEntities.length) throw new Error("Pick at least one entity");
 
@@ -76,7 +66,7 @@ export default function ForecastingPage() {
         body: JSON.stringify({
           accountIds: selectedAccounts, entityIds: selectedEntities,
           historyScenarioCode: historyScenario, targetScenarioCode: targetScenario,
-          historyPeriods, futurePeriods,
+          historyTimeCode, futureTimeCode,    // server resolves each to leaf months
           method,
           params: method === "GROWTH_PCT" ? { pct: growthPct } : method === "RUN_RATE" ? { basisN } : {},
           overwriteExisting: overwrite,
@@ -111,9 +101,10 @@ export default function ForecastingPage() {
                   {scenarios.map(s => <option key={s.id} value={s.memberCode}>{s.memberCode} — {s.memberName}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <PeriodPicker label="History start" value={historyStart} onChange={setHistoryStart} periods={periods} />
-                <PeriodPicker label="History end"   value={historyEnd}   onChange={setHistoryEnd}   periods={periods} />
+              <div>
+                <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide block mb-1">History period (any Time level)</label>
+                <TimePOVPicker value={historyTimeCode} onChange={setHistoryTimeCode} label="" />
+                <p className="text-[10px] text-stone-400 mt-1 italic">Pick FY2026H1 for first-half history, or 2026-04 for a single month</p>
               </div>
             </div>
           </section>
@@ -155,9 +146,10 @@ export default function ForecastingPage() {
                   {scenarios.map(s => <option key={s.id} value={s.memberCode}>{s.memberCode} — {s.memberName}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <PeriodPicker label="Future start" value={futureStart} onChange={setFutureStart} periods={periods} />
-                <PeriodPicker label="Future end"   value={futureEnd}   onChange={setFutureEnd}   periods={periods} />
+              <div>
+                <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide block mb-1">Future period (any Time level)</label>
+                <TimePOVPicker value={futureTimeCode} onChange={setFutureTimeCode} label="" />
+                <p className="text-[10px] text-stone-400 mt-1 italic">Pick FY2026H2 to forecast second half, or FY2026Q4 for one quarter</p>
               </div>
               <label className="flex items-center gap-2 text-xs text-stone-700">
                 <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />

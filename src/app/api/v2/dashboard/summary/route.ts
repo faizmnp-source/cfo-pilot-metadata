@@ -39,26 +39,11 @@ export async function GET(req: NextRequest) {
   const compareScenarioId = url.searchParams.get("compareScenarioId");   // optional — typically BUDGET id
   if (!scenarioId || !yearCode) return apiError("scenarioId, yearCode required", 400);
 
-  // ── Resolve months for year ─────────────────────────────────────
-  const timeDim = await prisma.dimension.findFirst({
-    where: { tenantId: auth.tid, kind: "TIME" as any }, select: { id: true },
-  });
-  if (!timeDim) return apiError("Time dim missing", 404);
-  const yearMember = await prisma.dimensionMember.findFirst({
-    where: { tenantId: auth.tid, dimensionId: timeDim.id, memberCode: yearCode },
-    select: { id: true },
-  });
-  if (!yearMember) return apiError("Year not found", 404);
-
-  const quarterEdges = await prisma.hierarchyEdge.findMany({
-    where: { tenantId: auth.tid, parentMemberId: yearMember.id },
-    select: { childMemberId: true },
-  });
-  const monthEdges = await prisma.hierarchyEdge.findMany({
-    where: { tenantId: auth.tid, parentMemberId: { in: quarterEdges.map(e => e.childMemberId) } },
-    select: { childMemberId: true },
-  });
-  const monthIds = monthEdges.map(e => e.childMemberId);
+  // ── Resolve months — universal Time POV (any year/half/quarter/month) ─
+  const { resolveTimeMembersToLeafMonths } = await import("@/lib/reports/time-resolver");
+  const { leafMonthIds, resolvedMember } = await resolveTimeMembersToLeafMonths(auth.tid, yearCode);
+  if (!resolvedMember) return apiError(`Time member '${yearCode}' not found`, 404);
+  const monthIds = leafMonthIds;
   const monthMembers = await prisma.dimensionMember.findMany({
     where: { tenantId: auth.tid, id: { in: monthIds }, isActive: true },
     select: { id: true, memberCode: true },
