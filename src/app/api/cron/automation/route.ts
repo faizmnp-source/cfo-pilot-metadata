@@ -48,13 +48,14 @@ function authorized(req: NextRequest): boolean {
 export async function GET(req: NextRequest) {
   const now = new Date();
 
-  // Allow dry-run with ?dry=1 even without auth (returns due jobs without
-  // executing). Useful for `curl` inspection from the cowork-runner.
+  // ?dry=1 returns due jobs without executing them. STILL requires the
+  // CRON_SECRET bearer — we don't want to leak job metadata to anyone
+  // who can probe public endpoints.
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
 
-  if (!dryRun && !authorized(req)) {
+  if (!authorized(req)) {
     return apiError("Unauthorized", 401, {
-      hint: "Set CRON_SECRET env var and call with Authorization: Bearer <secret>. Use ?dry=1 to inspect due jobs without executing.",
+      hint: "Set CRON_SECRET env var and call with Authorization: Bearer <secret>. Use ?dry=1 (still requires auth) to inspect due jobs without executing.",
     });
   }
 

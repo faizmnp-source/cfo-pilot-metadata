@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/health", "/api/debug"];
+// /api/cron/* is whitelisted because Vercel cron sends `Authorization: Bearer
+// <CRON_SECRET>`, not a JWT. The cron routes enforce their own bearer-token
+// check against process.env.CRON_SECRET, so middleware doesn't need to gate it.
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/health", "/api/debug", "/api/cron"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
