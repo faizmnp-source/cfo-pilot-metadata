@@ -25,8 +25,9 @@ export default function ForecastingPage() {
 
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
-  const [historyScenario, setHistoryScenario] = useState("ACTUAL");
-  const [targetScenario,  setTargetScenario]  = useState("FORECAST");
+  // Defaults set after scenarios load (resolved case-insensitively against actual member codes)
+  const [historyScenario, setHistoryScenario] = useState("");
+  const [targetScenario,  setTargetScenario]  = useState("");
   // Time POV: pick ANY Time member (FY2026 / FY2026H1 / FY2026Q3 / 2026-04)
   const [historyTimeCode, setHistoryTimeCode] = useState("FY2026H1");
   const [futureTimeCode,  setFutureTimeCode]  = useState("FY2026H2");
@@ -48,7 +49,15 @@ export default function ForecastingPage() {
     ]).then(([a, e, s, t]) => {
       setAccounts(((a?.data?.data ?? []) as any[]).filter(m => m.isActive));
       setEntities(((e?.data?.data ?? []) as any[]).filter(m => m.isActive));
-      setScenarios(((s?.data?.data ?? []) as any[]).filter(m => m.isActive));
+      const scns = ((s?.data?.data ?? []) as any[]).filter(m => m.isActive);
+      setScenarios(scns);
+      // Resolve scenario defaults case-insensitively against ACTUAL member codes.
+      // Tenant may code them as ACTUAL/Actual/actual or FORECAST/Forecast/Fcst — pick whichever exists.
+      const findScn = (rxp: RegExp) => scns.find((x: any) => rxp.test(x.memberCode))?.memberCode;
+      const histDefault   = findScn(/^actual$/i)   ?? findScn(/act/i)               ?? scns[0]?.memberCode ?? "";
+      const targetDefault = findScn(/^forecast$/i) ?? findScn(/^fcst$/i) ?? findScn(/forecast|fcst/i) ?? scns.find((x: any) => x.memberCode !== histDefault)?.memberCode ?? scns[0]?.memberCode ?? "";
+      setHistoryScenario(histDefault);
+      setTargetScenario(targetDefault);
       // Accept both 2026-01 and 2026M01 conventions for month-level Time members
       setPeriods(((t?.data?.data ?? []) as any[]).filter(m => m.isActive && /^\d{4}[-_]?M?\d{1,2}$/i.test(m.memberCode)).sort((x, y) => x.memberCode.localeCompare(y.memberCode)));
     }).catch(e => setError(String(e)));

@@ -33,7 +33,8 @@ export default function WorkforcePositionPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [periods,  setPeriods]  = useState<Period[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState("");
-  const [scenarioCode, setScenarioCode] = useState("ACTUAL");
+  const [scenarioCode, setScenarioCode] = useState("");
+  const [scenarios, setScenarios] = useState<{ id: string; memberCode: string; memberName: string }[]>([]);
   const [yearFilter, setYearFilter] = useState("2026");
 
   const [facts, setFacts] = useState<Fact[]>([]);
@@ -48,10 +49,11 @@ export default function WorkforcePositionPage() {
   useEffect(() => { (async () => {
     if (!positionId) return;
     try {
-      const [posR, entR, timeR] = await Promise.all([
-        fetch(`/api/v2/members/ud3?pageSize=500`, { credentials: "include" }).then(r => r.json()),
-        fetch(`/api/v2/members/entity?pageSize=500`, { credentials: "include" }).then(r => r.json()),
-        fetch(`/api/v2/members/time?pageSize=500`, { credentials: "include" }).then(r => r.json()),
+      const [posR, entR, timeR, scnR] = await Promise.all([
+        fetch(`/api/v2/members/ud3?pageSize=500`,      { credentials: "include" }).then(r => r.json()),
+        fetch(`/api/v2/members/entity?pageSize=500`,   { credentials: "include" }).then(r => r.json()),
+        fetch(`/api/v2/members/time?pageSize=500`,     { credentials: "include" }).then(r => r.json()),
+        fetch(`/api/v2/members/scenario?pageSize=100`, { credentials: "include" }).then(r => r.json()),
       ]);
       const pos = (posR?.data?.data ?? []).find((p: any) => p.id === positionId);
       setPosition(pos ?? null);
@@ -59,6 +61,11 @@ export default function WorkforcePositionPage() {
       // Accept both 2026-01 and 2026M01 month conventions
       setPeriods(((timeR?.data?.data ?? []) as Period[]).filter(t => /^\d{4}[-_]?M?\d{1,2}$/i.test(t.memberCode)).sort((a, b) => a.memberCode.localeCompare(b.memberCode)));
       if ((entR?.data?.data ?? []).length) setSelectedEntityId((entR?.data?.data ?? [])[0].id);
+      // Resolve scenarios + default to Actual (case-insensitive — tenants vary)
+      const scns = ((scnR?.data?.data ?? []) as any[]).filter(s => s.isActive);
+      setScenarios(scns);
+      const actual = scns.find(s => /^actual$/i.test(s.memberCode)) ?? scns.find(s => /act/i.test(s.memberCode)) ?? scns[0];
+      if (actual) setScenarioCode(actual.memberCode);
     } catch (e: any) { setError(e.message ?? String(e)); }
   })(); }, [positionId]);
 
@@ -154,7 +161,7 @@ export default function WorkforcePositionPage() {
           </Control>
           <Control label="Scenario">
             <select value={scenarioCode} onChange={e => setScenarioCode(e.target.value)} className="text-xs border border-stone-200 rounded px-2 py-1">
-              {["ACTUAL","BUDGET","FORECAST"].map(s => <option key={s} value={s}>{s}</option>)}
+              {scenarios.map(s => <option key={s.id} value={s.memberCode}>{s.memberCode} — {s.memberName}</option>)}
             </select>
           </Control>
           <Control label="Year">
