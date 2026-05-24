@@ -14,12 +14,16 @@
 import { prisma } from "@/lib/prisma";
 import { executeRule } from "@/lib/calc-rules/executor";
 import type { RuleSpec } from "@/lib/calc-rules/types";
+import { runConsolidation } from "@/lib/consolidation-engine";
 
 interface ExecutorCtx {
   tenantId: string;
-  triggeredBy: string;          // 'cron' | 'manual:<userId>'
+  triggeredBy: string;          // 'cron' | 'manual:<userId>' | 'pipeline:<id>'
   baseUrl: string;
   sessionCookie: string;
+  // For cron-triggered runs there's no HTTP session. We attribute lib-level
+  // mutations (origin members, etc.) to this fallback user.
+  systemUserId?: string;
 }
 
 interface JobRunResult {
@@ -55,6 +59,34 @@ export async function executeJob(
 
     switch (job.kind) {
       case "RUN_CONSOLIDATION": {
+        if (!params.scenarioId || !params.entityId || !params.yearCode) {
+          throw new Error("params.scenarioId, params.entityId, params.yearCode are required");
+        }
+        // Cron path (no session cookie): call the engine directly — bypasses HTTP.
+        // Manual path (cookie present): still go through HTTP so ProcessRun audit row
+        // is created by the route (existing behaviour).
+        if (!ctx.sessionCookie) {
+          const userId = ctx.systemUserId ?? (await resolveSystemUserId(ctx.tenantId));
+          const result = await runConsolidation({
+            tenantId:   ctx.tenantId,
+            userId,
+            scenarioId: params.scenarioId,
+            entityId:   params.entityId,
+            yearCode:   params.yearCode,
+          });
+          output = {
+            kind: "consolidation_result",
+            summary: `Consolidated ${result.leafEntityIds.length} leaf entities across ${result.monthIds.length} months (read ${result.rowsRead}, wrote ${result.rowsConsolidated})`,
+            counts: {
+              rowsRead: result.rowsRead,
+              rowsTranslated: result.rowsTranslated,
+              rowsConsolidated: result.rowsConsolidated,
+              rowsEliminated: result.rowsEliminated,
+            },
+            warnings: result.warnings,
+          };
+          break;
+        }
         const headers = { Cookie: ctx.sessionCookie, "Content-Type": "application/json" };
         const r = await fetch(`${ctx.baseUrl}/api/v2/processes/consolidation`, {
           method: "POST", headers,
@@ -218,4 +250,26 @@ export async function executeJob(
       finishedAt: finishedAt.toISOString(),
     };
   }
+}
+
+/**
+ * For cron-triggered runs we don't have a request session. We attribute
+ * any audit/createdBy field to the tenant's first ADMIN (or any active
+ * user as fallback). Throws if the tenant has no users — that shouldn't
+ * be possible for an enabled job.
+ */
+async function resolveSystemUserId(tenantId: string): Promise<string> {
+  const admin = await prisma.user.findFirst({
+    where: { tenantId, role: "ADMIN", isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (admin) return admin.id;
+  const any = await prisma.user.findFirst({
+    where: { tenantId, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (!any) throw new Error(`No active users found for tenant ${tenantId} — cannot run cron job`);
+  return any.id;
 }
