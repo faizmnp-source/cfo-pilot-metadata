@@ -47,40 +47,54 @@ export function useDashboardData() {
           fetchMembers("scenario"), fetchMembers("entity"), fetchMembers("time"),
         ]);
 
-        // Pick ACTUAL scenario, GRP/parent entity, latest FY
         const scenarioId = (scenarios.find(s => /^(ACT|ACTUAL)/i.test(s.code)) ?? scenarios[0])?.id;
-        const entity = entities.find(e => e.code === "GRP") ?? entities[0];
         const yearMember = times.find(t => /^FY\d{4}$/.test(t.code));
-        if (!scenarioId || !entity || !yearMember) {
+        if (!scenarioId || !yearMember || entities.length === 0) {
           setData(d => ({ ...d, loaded: true, hasData: false }));
           return;
         }
 
-        const [is, bs] = await Promise.all([
-          fetchReport("income-statement", { scenarioId, entityId: entity.id, yearCode: yearMember.code }),
-          fetchReport("balance-sheet",    { scenarioId, entityId: entity.id, yearCode: yearMember.code }),
-        ]);
-
-        // Extract revenue + opex from IS, net income from totals
-        let revenue = 0, expense = 0, cash = 0;
-        if (is?.sections) {
-          for (const s of is.sections) {
-            if (s.type === "REVENUE") revenue = s.subtotal?.value ?? 0;
-            if (s.type === "EXPENSE") expense = s.subtotal?.value ?? 0;
+        // Pull report PER entity in parallel. Aggregate across entities so
+        // dashboard shows true "group" numbers even before consolidation
+        // has been run (facts live at leaves, parent GRP is empty until
+        // consol). This matches what a CFO expects to see on day-1.
+        const reports = await Promise.all(entities.map(async (ent) => {
+          const [is, bs] = await Promise.all([
+            fetchReport("income-statement", { scenarioId, entityId: ent.id, yearCode: yearMember.code }),
+            fetchReport("balance-sheet",    { scenarioId, entityId: ent.id, yearCode: yearMember.code }),
+          ]);
+          let revenue = 0, expense = 0, cash = 0;
+          if (is?.sections) for (const s of is.sections) {
+            if (s.type === "REVENUE") revenue += s.subtotal?.value ?? 0;
+            if (s.type === "EXPENSE") expense += s.subtotal?.value ?? 0;
           }
-        }
-        if (bs?.sections) {
-          for (const s of bs.sections) {
+          if (bs?.sections) for (const s of bs.sections) {
             if (s.type === "ASSET") {
-              // Find the Cash & Bank account specifically
               const cashLine = s.lines?.find((l: any) => /cash/i.test(l.name));
-              if (cashLine) cash = cashLine.value;
+              if (cashLine) cash += cashLine.value;
             }
           }
-        }
-        const netIncome = revenue - expense;
-        const ebitda    = netIncome;  // pre-tax / pre-interest approx for v1
+          return { ent, revenue, expense, cash, hasFacts: (is?.meta?.rowsRead ?? 0) > 0 };
+        }));
 
+        // Prefer GRP/parent if it has facts (means consolidation has run).
+        // Otherwise sum across leaf entities (raw multi-entity view).
+        const grpReport = reports.find(r => r.ent.code === "GRP" && r.hasFacts);
+        let revenue = 0, expense = 0, cash = 0;
+        let entityName = "All entities";
+        if (grpReport) {
+          revenue = grpReport.revenue; expense = grpReport.expense; cash = grpReport.cash;
+          entityName = (grpReport.ent as any).memberName ?? grpReport.ent.name ?? grpReport.ent.code;
+        } else {
+          // Sum leaves (entities other than GRP/parent rollups)
+          const leaves = reports.filter(r => r.ent.code !== "GRP" && r.hasFacts);
+          for (const r of leaves) { revenue += r.revenue; expense += r.expense; cash += r.cash; }
+          if (leaves.length === 1) entityName = (leaves[0].ent as any).memberName ?? leaves[0].ent.code;
+          else if (leaves.length > 1) entityName = `${leaves.length} entities (pre-consolidation)`;
+        }
+
+        const netIncome = revenue - expense;
+        const ebitda    = netIncome;
         const hasData = revenue !== 0 || expense !== 0 || cash !== 0;
 
         setData({
@@ -90,7 +104,7 @@ export function useDashboardData() {
           burnRate: { value: Math.abs(expense) / 12, delta: 0, trend: "up",                  sparkline: [] },
           loaded: true, hasData,
           yearCode: yearMember.code,
-          entityName: (entity as any).memberName ?? entity.name ?? entity.code,
+          entityName,
         });
       } catch (e) {
         console.error("dashboard load failed:", e);
