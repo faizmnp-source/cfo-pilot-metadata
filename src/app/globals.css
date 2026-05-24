@@ -95,19 +95,45 @@
   --paper: #f5efe2;
   --paper-2: #ede5d2;
   --rule: #d9cfb8;
+  --rule-soft: #e6dcc6;
   --ink: #1a1612;
   --ink-2: #3d362c;
   --ink-3: #7a6e5c;
+  --ink-4: #a89d87;
   --accent: #7a2030;
+  --accent-soft: #b54c5c;
   --emerald-atelier: #1f5d4a;
   --font-serif: 'Newsreader', Georgia, serif;
   --font-sans:  'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
 }
 body.atelier-theme { background: var(--paper); color: var(--ink); font-family: var(--font-sans); }
 .atelier-serif { font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.01em; }
 .atelier-eyebrow { font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .atelier-card { background: var(--paper); border: 1px solid var(--rule); padding: 26px; }
 .atelier-neg { color: var(--accent); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Editorial pill buttons used in masthead actions */
+.atelier-pill {
+  font-size: 12px;
+  padding: 7px 14px;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  background: transparent;
+  border-radius: 999px;
+  font-weight: 500;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.atelier-pill:hover { background: var(--ink); color: var(--paper); }
+.atelier-pill-dark { background: var(--ink); color: var(--paper); }
+.atelier-pill-dark:hover { background: var(--accent); border-color: var(--accent); }
 
 /* ─── ATELIER · PAGE-LEVEL DEFAULTS ─────────────────────────────── */
 /* Every (cfo) page inherits cream paper + Inter UI from body class.

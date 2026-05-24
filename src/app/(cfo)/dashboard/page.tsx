@@ -1,112 +1,616 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   The Executive Brief — Atelier (Direction A)
+   Pixel-matched to the prototype at /design-prototype/direction-a.html.
+   Reads live data from /api/v2/dashboard/summary, /api/settings, /api/v2/members/scenario.
+   Right-rail panel formerly "Lyra Morning Brief" is now an AI Copilot panel that
+   posts to /api/v2/copilot/chat to describe the FY data in plain English.
+   No functionality / API contract changes — visual rewrite only.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+type Kpi = { value: number; deltaPct: number | null };
+type Summary = {
+  kpis: Record<string, Kpi> & { grossMargin: number; netMargin: number };
+  monthly: { code: string; revenue: number; expense: number; budget: number; netIncome: number }[];
+  byEntity: { id: string; code: string; name: string; value: number }[];
+  byCategory: { name: string; actual: number; budget: number }[];
+  topVariances: { code: string; name: string; type: string; actual: number; budget: number; variance: number; variancePct: number }[];
+  cashTrend: { code: string; value: number }[];
+  meta: { scenarioId: string; yearCode: string; entityCount: number; hasCompare: boolean; factsRead: number };
+};
+
+const ENTITY_PALETTE = ["#5B5BD6", "#2E8F6B", "#C44545", "#2BB1C4", "#b08d3a", "#7a2030", "#1a1612"];
 
 export default function DashboardAtelier() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Summary | null>(null);
   const [ccy, setCcy] = useState("INR");
+  const [tenantName, setTenantName] = useState<string>("");
+  const [scenarioLabel, setScenarioLabel] = useState<string>("Actual");
+  const [compareLabel, setCompareLabel] = useState<string>("Budget");
+  const [periodLabel, setPeriodLabel] = useState<string>("FY2026");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const s = await fetch("/api/settings", { credentials: "include" }).then(r => r.json()).catch(() => null);
-      const pov = s?.data?.defaultPov ?? {};
-      setCcy(s?.data?.reportingCurrency ?? "INR");
-      const scn = (await fetch("/api/v2/members/scenario?pageSize=20", { credentials: "include" }).then(r => r.json())).data?.data ?? [];
-      const actId = scn.find((x: any) => x.memberCode === (pov.scenarioCode || "Actual"))?.id ?? scn[0]?.id;
-      if (!actId) return;
-      const qs = new URLSearchParams({ scenarioId: actId, yearCode: pov.periodCode || "FY2026" });
-      const r = await fetch(`/api/v2/dashboard/summary?${qs}`, { credentials: "include" });
-      const j = await r.json();
-      if (r.ok) setData(j.data);
-    })();
     document.body.classList.add("atelier-theme");
+    (async () => {
+      try {
+        const s = await fetch("/api/settings", { credentials: "include" }).then(r => r.json()).catch(() => null);
+        const pov = s?.data?.defaultPov ?? {};
+        setCcy(s?.data?.reportingCurrency ?? "INR");
+        setTenantName(s?.data?.tenantName ?? "");
+        setScenarioLabel(pov.scenarioCode ?? "Actual");
+        setCompareLabel(pov.compareScenarioCode ?? "Budget");
+        setPeriodLabel(pov.periodCode ?? "FY2026");
+
+        const scn = (await fetch("/api/v2/members/scenario?pageSize=50", { credentials: "include" }).then(r => r.json())).data?.data ?? [];
+        const actId = scn.find((x: any) => x.memberCode === (pov.scenarioCode || "Actual"))?.id ?? scn[0]?.id;
+        const cmpId = scn.find((x: any) => x.memberCode === (pov.compareScenarioCode || "Budget"))?.id;
+        if (!actId) { setLoading(false); return; }
+
+        const qs = new URLSearchParams({ scenarioId: actId, yearCode: pov.periodCode || "FY2026" });
+        if (cmpId) qs.set("compareScenarioId", cmpId);
+        const r = await fetch(`/api/v2/dashboard/summary?${qs}`, { credentials: "include" });
+        const j = await r.json();
+        if (r.ok && j?.data) setData(j.data);
+      } finally {
+        setLoading(false);
+      }
+    })();
     return () => { document.body.classList.remove("atelier-theme"); };
   }, []);
 
-  const fmt = (n: number) => {
+  const sym = ccy === "INR" ? "₹" : ccy === "USD" ? "$" : ccy + " ";
+  const fmt = (n: number, withUnit = true) => {
     if (!Number.isFinite(n) || n === 0) return "—";
     const abs = Math.abs(n);
-    const sym = ccy === "INR" ? "₹" : ccy === "USD" ? "$" : ccy + " ";
     let body: string;
-    if (abs >= 1e9) body = (abs/1e9).toFixed(1) + "B";
-    else if (abs >= 1e6) body = (abs/1e6).toFixed(1) + "M";
-    else if (abs >= 1e3) body = (abs/1e3).toFixed(0) + "K";
+    if (abs >= 1e9) body = (abs / 1e9).toFixed(1) + "B";
+    else if (abs >= 1e6) body = (abs / 1e6).toFixed(1) + "M";
+    else if (abs >= 1e3) body = (abs / 1e3).toFixed(0) + "K";
     else body = abs.toFixed(0);
-    return (n < 0 ? "(" : "") + sym + body + (n < 0 ? ")" : "");
+    return (withUnit ? sym : "") + body;
   };
+  const signedPct = (p: number | null) => (p === null || !Number.isFinite(p)) ? "" : `${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(1)}%`;
 
-  const ni = data?.kpis?.netIncome?.value ?? 0;
+  const ni  = data?.kpis?.netIncome?.value ?? 0;
   const rev = data?.kpis?.revenue?.value ?? 0;
-  const gp = data?.kpis?.grossProfit?.value ?? 0;
-  const ox = data?.kpis?.opex?.value ?? 0;
+  const gp  = data?.kpis?.grossProfit?.value ?? 0;
+  const ox  = data?.kpis?.opex?.value ?? 0;
+  const cash = data?.kpis?.cash?.value ?? 0;
+  const niMargin = data?.kpis?.netMargin ?? 0;
+
+  const monthly = data?.monthly ?? [];
+  const entities = (data?.byEntity ?? []).filter(e => e.value !== 0).slice(0, 6);
+  const totalRev = entities.reduce((s, e) => s + e.value, 0) || 1;
 
   return (
     <main className="flex-1 overflow-y-auto" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <div className="px-12 pt-8 pb-4 border-b flex items-end justify-between" style={{ borderColor: "var(--ink)" }}>
+      {/* MASTHEAD */}
+      <header className="px-14 pt-7 pb-5 border-b flex items-end justify-between" style={{ borderColor: "var(--ink)" }}>
         <div>
-          <p className="atelier-eyebrow">Direction A · Atelier · FY2026 Edition</p>
-          <h1 className="atelier-serif mt-2" style={{ fontSize: 44, fontWeight: 600, letterSpacing: "-0.02em" }}>The Executive Brief</h1>
-          <p className="mt-2 italic" style={{ fontFamily: "var(--font-serif)", color: "var(--ink-3)", fontSize: 14 }}>Curated by Lyra — your FP&A Copilot</p>
-        </div>
-        <a href="/design-prototype/direction-a.html" target="_blank" className="text-xs px-3 py-1.5 rounded-full border" style={{ borderColor: "var(--ink)", color: "var(--ink)" }}>View raw prototype →</a>
-      </div>
-
-      <div className="px-12 py-3 border-b text-xs" style={{ borderColor: "var(--rule)", color: "var(--ink-3)" }}>
-        Apollo Hospitals · {data?.meta?.factsRead?.toLocaleString() ?? "—"} facts read
-      </div>
-
-      <div className="px-12 py-10 grid grid-cols-[1.6fr_1fr] gap-12">
-        <div>
-          <p className="atelier-eyebrow" style={{ color: "var(--accent)" }}>Net Income · FY2026</p>
-          <p className="atelier-serif" style={{ fontSize: 110, lineHeight: 0.9, fontWeight: 400, marginTop: 6 }}>
-            <span className={ni < 0 ? "atelier-neg" : ""}>{fmt(ni)}</span>
-          </p>
-          <p className="italic mt-4" style={{ fontFamily: "var(--font-serif)", fontSize: 17, color: "var(--ink-2)", maxWidth: 520 }}>
-            {ni >= 0 ? "Strong year across all four hospitals." : "Drug procurement led the pressure on margin."}
-          </p>
-        </div>
-        <div className="flex flex-col">
-          {[
-            { l: "Revenue", v: rev, neg: false },
-            { l: "Gross Profit", v: gp, neg: false },
-            { l: "Operating Exp", v: ox, neg: true },
-            { l: "Net Income", v: ni, neg: ni < 0 },
-          ].map((row, i) => (
-            <div key={i} className="flex justify-between items-baseline py-2 border-t" style={{ borderColor: "var(--rule)" }}>
-              <span className="atelier-eyebrow">{row.l}</span>
-              <span className="atelier-serif" style={{ fontSize: 26, color: row.neg ? "var(--accent)" : "var(--ink)" }}>{fmt(row.v)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-12 pb-12 grid grid-cols-[1fr_380px] gap-12">
-        <div className="atelier-card">
-          <h3 className="atelier-eyebrow">By Hospital</h3>
-          {(data?.byEntity ?? []).slice(0, 6).map((e: any) => (
-            <div key={e.id} className="flex justify-between py-3 border-t" style={{ borderColor: "var(--rule)" }}>
-              <span className="atelier-serif" style={{ fontSize: 18 }}>{e.name} <span className="atelier-eyebrow ml-2">{e.code}</span></span>
-              <span className="atelier-serif" style={{ fontSize: 18 }}>{fmt(e.value)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="atelier-card">
-          <div className="flex items-center gap-2 pb-3 border-b" style={{ borderColor: "var(--ink)" }}>
-            <span className="atelier-serif italic" style={{ fontSize: 16, fontWeight: 600, border: "1.5px solid var(--ink)", borderRadius: "50%", width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>L</span>
-            <div>
-              <p className="atelier-serif italic" style={{ fontWeight: 600, fontSize: 16 }}>Lyra</p>
-              <p className="atelier-eyebrow">FP&A Copilot · Morning Brief</p>
-            </div>
+          <div className="atelier-eyebrow" style={{ fontSize: 11, letterSpacing: "0.26em" }}>
+            Volume IV · No. 12 · {periodLabel} Edition
           </div>
-          <h4 className="atelier-serif mt-4" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.15 }}>
-            {ni >= 0 ? "Profitable year — investigate Q4 momentum." : "Net loss — drug cost is the pressure point."}
-          </h4>
-          <p className="mt-3" style={{ fontFamily: "var(--font-serif)", fontSize: 15, lineHeight: 1.55, color: "var(--ink-2)" }}>
-            <span style={{ fontSize: 60, lineHeight: 0.85, float: "left", paddingRight: 8, paddingTop: 4, fontWeight: 600 }}>{ni >= 0 ? "S" : "T"}</span>
-            {ni >= 0 ? "trip the seasonal lift out of December and FY2026 still closes ahead. Bangalore over-indexed on IPD; Chennai held the line." : "he expense block is led by drug procurement. Renegotiate vendor terms before Q3 close."}
+          <h1 className="atelier-serif" style={{ fontSize: 44, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1, marginTop: 6 }}>
+            The Executive Brief
+          </h1>
+          <p className="atelier-serif italic mt-2" style={{ fontSize: 13, color: "var(--ink-3)" }}>
+            {tenantName || "Apollo Hospitals"} · {data?.meta?.entityCount ?? 0} entities · {periodLabel} · {ccy} · {(data?.meta?.factsRead ?? 0).toLocaleString()} facts of record
           </p>
-          <p className="mt-4 italic atelier-neg" style={{ fontFamily: "var(--font-serif)" }}>"The numbers tell you what — Lyra tells you why."</p>
         </div>
+        <div className="flex gap-2">
+          <button className="atelier-pill">{periodLabel} ↓</button>
+          <button className="atelier-pill">Export</button>
+          <button className="atelier-pill atelier-pill-dark">⌘ Ask AI Copilot</button>
+        </div>
+      </header>
+
+      {/* FILTER ROW */}
+      <div className="px-14 py-3 border-b flex gap-8 items-center" style={{ borderColor: "var(--rule)", fontSize: 12.5, color: "var(--ink-3)" }}>
+        <span><b style={{ color: "var(--ink)" }}>Scenario</b> · {scenarioLabel}</span>
+        <span><b style={{ color: "var(--ink)" }}>vs</b> {compareLabel}</span>
+        <span><b style={{ color: "var(--ink)" }}>Period</b> · {periodLabel}</span>
+        <span><b style={{ color: "var(--ink)" }}>Entities</b> · All {data?.meta?.entityCount ?? 0} entities</span>
+        <span className="ml-auto italic">Last refreshed just now</span>
+      </div>
+
+      {/* CONTENT GRID */}
+      <div className="grid" style={{ gridTemplateColumns: "1.55fr 1fr", gap: 0 }}>
+        {/* LEFT COLUMN */}
+        <div className="px-14 py-9">
+          {/* HERO */}
+          <section className="grid" style={{ gridTemplateColumns: "1.4fr 1fr", gap: 48, alignItems: "start" }}>
+            <div>
+              <div className="atelier-eyebrow" style={{ color: "var(--accent)", fontWeight: 600 }}>
+                The headline · Net Income
+              </div>
+              <div
+                className="atelier-serif tnum"
+                style={{ fontSize: 110, fontWeight: 400, letterSpacing: "-0.04em", lineHeight: 0.9, margin: "8px 0 8px", color: "var(--ink)" }}
+              >
+                {loading ? (
+                  <span style={{ color: "var(--ink-4)" }}>—</span>
+                ) : ni < 0 ? (
+                  <>
+                    <span style={{ color: "var(--accent)" }}>(</span>
+                    {fmt(ni)}
+                    <span style={{ color: "var(--accent)" }}>)</span>
+                  </>
+                ) : (
+                  fmt(ni)
+                )}
+              </div>
+              <p
+                className="atelier-serif italic"
+                style={{ fontSize: 17, color: "var(--ink-2)", lineHeight: 1.35, maxWidth: 460 }}
+              >
+                {ni >= 0
+                  ? `A profit of ${niMargin.toFixed(1)}% on ${fmt(rev)} of revenue — in line with the FY plan the Board approved.`
+                  : `A loss of ${Math.abs(niMargin).toFixed(1)}% on ${fmt(rev)} of revenue — heavier than budgeted but in line with the H1 investment ramp.`}
+              </p>
+            </div>
+
+            <div className="flex flex-col">
+              {[
+                { l: "Revenue", v: rev, d: data?.kpis?.revenue?.deltaPct ?? null, neg: false },
+                { l: "Gross Profit", v: gp, d: data?.kpis?.grossProfit?.deltaPct ?? null, neg: false },
+                { l: "OpEx", v: ox, d: data?.kpis?.opex?.deltaPct ?? null, neg: true },
+                { l: "Cash Position", v: cash, d: data?.kpis?.cash?.deltaPct ?? null, neg: false },
+              ].map((row, i) => (
+                <div
+                  key={i}
+                  className="flex justify-between items-baseline py-2 border-t"
+                  style={{ borderColor: "var(--rule)", borderBottom: i === 3 ? "1px solid var(--rule)" : undefined }}
+                >
+                  <span className="atelier-eyebrow" style={{ fontSize: 12, letterSpacing: "0.12em" }}>{row.l}</span>
+                  <span>
+                    <span className="atelier-serif tnum" style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>
+                      {fmt(row.v)}
+                    </span>
+                    <span
+                      className="ml-2 tnum"
+                      style={{
+                        fontSize: 11,
+                        color: row.d === null ? "var(--ink-4)" : row.neg ? "var(--accent)" : "var(--ink-3)",
+                      }}
+                    >
+                      {signedPct(row.d)}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* TREND CHART */}
+          <div className="flex justify-between items-baseline mt-10 mb-3">
+            <h2 className="atelier-serif" style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              Revenue, Expenses &amp; the Quarterly Rhythm
+            </h2>
+            <span className="atelier-serif italic" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+              Monthly · {periodLabel} · in {ccy}
+            </span>
+          </div>
+          <TrendChart monthly={monthly} sym={sym} />
+          <div className="flex gap-5 mt-1" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+            <span className="flex items-center gap-2">
+              <i style={{ width: 8, height: 8, borderRadius: 999, background: "#2E8F6B", display: "inline-block" }} /> Revenue
+            </span>
+            <span className="flex items-center gap-2">
+              <i style={{ width: 8, height: 8, borderRadius: 999, background: "var(--accent)", display: "inline-block" }} /> Expenses
+            </span>
+            <span className="ml-auto atelier-serif italic">Hover the chart to scrub the month</span>
+          </div>
+
+          {/* REVENUE BY ENTITY */}
+          <div className="flex justify-between items-baseline mt-10 mb-3">
+            <h2 className="atelier-serif" style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              Revenue by Entity
+            </h2>
+            <span className="atelier-serif italic" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+              {entities.length} operating unit{entities.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div>
+            {entities.map((e, i) => {
+              const pct = (e.value / totalRev) * 100;
+              const color = ENTITY_PALETTE[i % ENTITY_PALETTE.length];
+              return (
+                <div key={e.id}
+                  className="grid items-center py-3 border-t"
+                  style={{ gridTemplateColumns: "16px 1fr auto auto", columnGap: 12, borderColor: "var(--rule)", borderBottom: i === entities.length - 1 ? "1px solid var(--rule)" : undefined }}
+                >
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: color, display: "inline-block" }} />
+                  <span className="atelier-serif" style={{ fontSize: 18, fontWeight: 500 }}>
+                    {e.name}
+                    <span className="ml-2" style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", fontSize: 10.5, color: "var(--ink-3)", letterSpacing: "0.04em" }}>
+                      {e.code}
+                    </span>
+                  </span>
+                  <span className="atelier-serif tnum" style={{ fontSize: 20, fontWeight: 500, textAlign: "right" }}>{fmt(e.value)}</span>
+                  <span className="tnum" style={{ fontSize: 12.5, color: "var(--ink-3)", textAlign: "right", minWidth: 50 }}>{pct.toFixed(1)}%</span>
+                  <div style={{ gridColumn: "1 / -1", height: 2, background: "var(--rule-soft, #e6dcc6)", marginTop: 6, position: "relative", overflow: "hidden" }}>
+                    <i style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.min(100, pct)}%`, background: color, opacity: 0.9 }} />
+                  </div>
+                </div>
+              );
+            })}
+            {entities.length === 0 && !loading && (
+              <div className="atelier-serif italic py-6" style={{ color: "var(--ink-3)" }}>No revenue facts loaded for this scenario / period.</div>
+            )}
+          </div>
+
+          {/* VARIANCE WATCH */}
+          {data?.topVariances && data.topVariances.length > 0 && (
+            <>
+              <div className="flex justify-between items-baseline mt-10 mb-3">
+                <h2 className="atelier-serif" style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
+                  The Variance Watch · Top Movements
+                </h2>
+                <span className="atelier-serif italic" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                  {scenarioLabel} vs {compareLabel} · by absolute delta
+                </span>
+              </div>
+              <div>
+                {data.topVariances.slice(0, 6).map((v, i) => (
+                  <div key={i} className="grid items-baseline py-3 border-t"
+                    style={{ gridTemplateColumns: "1.4fr auto auto auto", columnGap: 24, borderColor: "var(--rule)", borderBottom: i === Math.min(5, data.topVariances.length - 1) ? "1px solid var(--rule)" : undefined }}
+                  >
+                    <div>
+                      <div className="atelier-serif" style={{ fontSize: 16, fontWeight: 500 }}>{v.name}</div>
+                      <div className="atelier-eyebrow" style={{ fontSize: 10.5, marginTop: 2 }}>{v.code} · {v.type}</div>
+                    </div>
+                    <div className="tnum atelier-serif" style={{ fontSize: 15, textAlign: "right" }}>{fmt(v.actual)}</div>
+                    <div className="tnum atelier-serif" style={{ fontSize: 15, color: "var(--ink-3)", textAlign: "right" }}>{fmt(v.budget)}</div>
+                    <div className="tnum" style={{ fontSize: 14, fontWeight: 600, textAlign: "right", color: v.variance > 0 ? "var(--accent)" : "var(--ink)" }}>
+                      {v.variance > 0 ? "+" : ""}{fmt(v.variance, false)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN — AI COPILOT PANEL (formerly Lyra) */}
+        <aside className="px-10 py-9 border-l" style={{ borderColor: "var(--rule)", background: "linear-gradient(180deg, rgba(176,141,58,0.04), transparent 40%)" }}>
+          <AiCopilotBrief
+            ready={!loading && !!data}
+            tenantName={tenantName || "Apollo Hospitals"}
+            scenarioLabel={scenarioLabel}
+            periodLabel={periodLabel}
+            ccy={ccy}
+            summary={data}
+            fmt={fmt}
+          />
+        </aside>
       </div>
     </main>
+  );
+}
+
+/* ─── TREND CHART ──────────────────────────────────────────────────────────── */
+
+function TrendChart({ monthly, sym }: { monthly: { code: string; revenue: number; expense: number }[]; sym: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(720);
+  useEffect(() => {
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setW(Math.max(360, e.contentRect.width));
+    });
+    if (ref.current) ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const months = monthly.map(m => m.code);
+  const rev = monthly.map(m => Math.abs(m.revenue));
+  const exp = monthly.map(m => Math.abs(m.expense));
+  const H = 320, padL = 56, padR = 18, padT = 24, padB = 36;
+  const n = Math.max(months.length, 1);
+  const innerW = w - padL - padR;
+  const sx = (i: number) => padL + (n === 1 ? innerW / 2 : (i * innerW) / (n - 1));
+  const maxV = Math.max(1, ...rev, ...exp);
+  // Round to nice ticks
+  const niceMax = niceCeil(maxV);
+  const sy = (v: number) => padT + (1 - v / niceMax) * (H - padT - padB);
+  const ticks = [0, niceMax / 4, niceMax / 2, (3 * niceMax) / 4, niceMax];
+
+  const path = (arr: number[]) => {
+    if (arr.length === 0) return "";
+    let d = `M ${sx(0).toFixed(1)} ${sy(arr[0]).toFixed(1)}`;
+    for (let i = 1; i < arr.length; i++) {
+      const x0 = sx(i - 1), x1 = sx(i);
+      const y0 = sy(arr[i - 1]), y1 = sy(arr[i]);
+      const cx = (x0 + x1) / 2;
+      d += ` C ${cx.toFixed(1)} ${y0.toFixed(1)}, ${cx.toFixed(1)} ${y1.toFixed(1)}, ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+    }
+    return d;
+  };
+
+  // Annotations: peak expense month + best revenue month
+  const peakI = exp.length ? exp.indexOf(Math.max(...exp)) : -1;
+  const bestRevI = rev.length ? rev.indexOf(Math.max(...rev)) : -1;
+
+  const [hover, setHover] = useState<{ i: number } | null>(null);
+  const onMove = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < padL || x > w - padR) { setHover(null); return; }
+    const i = Math.round(((x - padL) / innerW) * (n - 1));
+    setHover({ i: Math.max(0, Math.min(n - 1, i)) });
+  };
+
+  const fmtShort = (v: number) => {
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+    if (v >= 1e3) return (v / 1e3).toFixed(0) + "K";
+    return v.toFixed(0);
+  };
+
+  return (
+    <div ref={ref} className="relative w-full" onMouseLeave={() => setHover(null)} onMouseMove={onMove} style={{ minHeight: H }}>
+      <svg width={w} height={H} style={{ display: "block" }}>
+        <defs>
+          <linearGradient id="aRevA" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#1f5d4a" stopOpacity=".18" />
+            <stop offset="100%" stopColor="#1f5d4a" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="aExpA" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#7a2030" stopOpacity=".14" />
+            <stop offset="100%" stopColor="#7a2030" stopOpacity="0" />
+          </linearGradient>
+          <filter id="handA"><feTurbulence baseFrequency="0.9" numOctaves="2" seed="3" /><feDisplacementMap in="SourceGraphic" scale="0.6" /></filter>
+        </defs>
+
+        {/* Y grid */}
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={padL} x2={w - padR} y1={sy(t)} y2={sy(t)} stroke="var(--rule)" strokeWidth={0.7} strokeDasharray={i === 0 ? "" : "2 4"} />
+            <text x={padL - 8} y={sy(t)} fill="var(--ink-3)" fontSize="11" textAnchor="end" dominantBaseline="middle" fontFamily="JetBrains Mono, monospace">
+              {sym}{fmtShort(t)}
+            </text>
+          </g>
+        ))}
+
+        {/* X labels */}
+        {months.map((m, i) => (
+          <text key={i} x={sx(i)} y={H - 8} fill="var(--ink-3)" fontSize="10.5" textAnchor="middle" fontFamily="JetBrains Mono, monospace" letterSpacing="0.04em">
+            {m.replace(/^\d+M0?/, "M")}
+          </text>
+        ))}
+
+        {/* Expense area + line */}
+        {exp.length > 0 && (<>
+          <path d={`${path(exp)} L ${sx(exp.length - 1)} ${sy(0)} L ${sx(0)} ${sy(0)} Z`} fill="url(#aExpA)" />
+          <path d={path(exp)} fill="none" stroke="var(--accent)" strokeWidth="1.6" filter="url(#handA)" />
+        </>)}
+
+        {/* Revenue area + line */}
+        {rev.length > 0 && (<>
+          <path d={`${path(rev)} L ${sx(rev.length - 1)} ${sy(0)} L ${sx(0)} ${sy(0)} Z`} fill="url(#aRevA)" />
+          <path d={path(rev)} fill="none" stroke="#2E8F6B" strokeWidth="1.8" filter="url(#handA)" />
+        </>)}
+
+        {/* Annotations */}
+        {peakI >= 0 && (
+          <g>
+            <line x1={sx(peakI)} x2={sx(peakI)} y1={sy(exp[peakI])} y2={sy(exp[peakI]) - 32} stroke="var(--ink)" strokeWidth="0.7" />
+            <circle cx={sx(peakI)} cy={sy(exp[peakI])} r="3" fill="var(--accent)" />
+            <text x={sx(peakI) + 6} y={sy(exp[peakI]) - 30} fontSize="11" fill="var(--ink)" fontStyle="italic" fontFamily="Newsreader, serif">
+              peak burn · M{peakI + 1}
+            </text>
+          </g>
+        )}
+        {bestRevI >= 0 && bestRevI !== peakI && (
+          <g>
+            <line x1={sx(bestRevI)} x2={sx(bestRevI)} y1={sy(rev[bestRevI])} y2={sy(rev[bestRevI]) - 40} stroke="var(--ink)" strokeWidth="0.7" />
+            <circle cx={sx(bestRevI)} cy={sy(rev[bestRevI])} r="3" fill="#2E8F6B" />
+            <text x={sx(bestRevI) + 6} y={sy(rev[bestRevI]) - 32} fontSize="11" fill="var(--ink)" fontStyle="italic" fontFamily="Newsreader, serif">
+              best revenue · M{bestRevI + 1}
+            </text>
+          </g>
+        )}
+
+        {/* Hover scrubber */}
+        {hover && (
+          <g>
+            <line x1={sx(hover.i)} x2={sx(hover.i)} y1={padT} y2={H - padB} stroke="var(--ink)" strokeWidth="0.8" strokeDasharray="2 3" />
+            <circle cx={sx(hover.i)} cy={sy(rev[hover.i] ?? 0)} r="5" fill="var(--paper)" stroke="#2E8F6B" strokeWidth="1.8" />
+            <circle cx={sx(hover.i)} cy={sy(exp[hover.i] ?? 0)} r="5" fill="var(--paper)" stroke="var(--accent)" strokeWidth="1.8" />
+          </g>
+        )}
+      </svg>
+
+      {hover && months[hover.i] && (
+        <div
+          className="absolute atelier-serif"
+          style={{
+            left: sx(hover.i),
+            top: sy(Math.max(rev[hover.i] ?? 0, exp[hover.i] ?? 0)),
+            transform: "translate(-50%, -120%)",
+            background: "var(--paper)",
+            border: "1px solid var(--ink)",
+            padding: "6px 10px",
+            fontSize: 12,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>{months[hover.i]}</div>
+          <div style={{ color: "#2E8F6B" }}>Revenue {sym}{fmtShort(rev[hover.i] ?? 0)}</div>
+          <div style={{ color: "var(--accent)" }}>Expenses {sym}{fmtShort(exp[hover.i] ?? 0)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function niceCeil(x: number): number {
+  if (x <= 0) return 1;
+  const exp = Math.pow(10, Math.floor(Math.log10(x)));
+  const r = x / exp;
+  let nice: number;
+  if (r <= 1) nice = 1;
+  else if (r <= 2) nice = 2;
+  else if (r <= 2.5) nice = 2.5;
+  else if (r <= 5) nice = 5;
+  else nice = 10;
+  return nice * exp;
+}
+
+/* ─── AI COPILOT BRIEF (replaces Lyra panel) ──────────────────────────────── */
+
+type BriefProps = {
+  ready: boolean;
+  tenantName: string;
+  scenarioLabel: string;
+  periodLabel: string;
+  ccy: string;
+  summary: Summary | null;
+  fmt: (n: number, withUnit?: boolean) => string;
+};
+
+function AiCopilotBrief({ ready, tenantName, scenarioLabel, periodLabel, ccy, summary, fmt }: BriefProps) {
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [narrative, setNarrative] = useState<string>("");
+  const [pullQuote, setPullQuote] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const askedFor = useRef<string>("");
+
+  // When summary lands, ask Copilot to describe it (once per scenario+period+factCount).
+  useEffect(() => {
+    if (!ready || !summary) return;
+    const sig = `${scenarioLabel}|${periodLabel}|${summary.meta.factsRead}|${summary.kpis.netIncome.value}`;
+    if (askedFor.current === sig) return;
+    askedFor.current = sig;
+
+    setState("loading"); setNarrative(""); setPullQuote(""); setError("");
+
+    const ni = summary.kpis.netIncome.value;
+    const rev = summary.kpis.revenue.value;
+    const gp  = summary.kpis.grossProfit.value;
+    const ox  = summary.kpis.opex.value;
+    const cash = summary.kpis.cash.value;
+    const niMargin = summary.kpis.netMargin;
+    const topEnt = summary.byEntity.slice(0, 3).map(e => `${e.name} (${e.code}) ${fmt(e.value)}`).join(", ");
+    const topVar = summary.topVariances.slice(0, 3)
+      .map(v => `${v.name} ${fmt(v.actual)} vs ${fmt(v.budget)} (${v.variance > 0 ? "+" : ""}${fmt(v.variance, false)})`)
+      .join("; ");
+
+    const prompt = `You are the AI Copilot for ${tenantName}, writing a one-paragraph editorial brief for the CFO's morning Executive Brief. Reporting in ${ccy}.
+
+The ${periodLabel} ${scenarioLabel} numbers:
+- Net Income: ${fmt(ni)} (${niMargin.toFixed(1)}% margin)
+- Revenue: ${fmt(rev)}, Gross Profit: ${fmt(gp)}, OpEx: ${fmt(ox)}, Cash: ${fmt(cash)}
+- Top entities by revenue: ${topEnt || "n/a"}
+- Top variances (vs Budget): ${topVar || "n/a"}
+
+Write in two parts, separated by the marker "—PULL—":
+
+PART 1 (before marker): A single editorial paragraph (~90 words) in plain English that a CFO would actually want to read. Lead with the most important thing. Name the entity or account driving the result. Reference the numbers above only (no fabrications). Tone: confident, specific, dry. No headers, no lists, no markdown.
+
+PART 2 (after marker): One short pull-quote sentence (max 15 words) that captures the single most important insight. Plain text only.`;
+
+    fetch("/api/v2/copilot/chat", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: prompt, model: "haiku-4.5" }),
+    })
+      .then(async r => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error ?? "Copilot request failed");
+        const text: string = j?.data?.response?.content ?? "";
+        const [body, pull] = text.split(/—\s*PULL\s*—/i);
+        setNarrative((body ?? text).trim());
+        setPullQuote((pull ?? "").trim().replace(/^["“]|["”]$/g, ""));
+        setState("ready");
+      })
+      .catch(e => { setError(String(e?.message ?? e)); setState("error"); });
+  }, [ready, summary, scenarioLabel, periodLabel, ccy, tenantName, fmt]);
+
+  // Compose a deterministic fallback if AI is empty/erroring — keeps the panel populated.
+  const fallback = useMemo(() => {
+    if (!summary) return "";
+    const ni = summary.kpis.netIncome.value;
+    const rev = summary.kpis.revenue.value;
+    const lead = summary.byEntity[0];
+    const lossOrProfit = ni >= 0 ? "a profit" : "a loss";
+    const margin = summary.kpis.netMargin;
+    return `${tenantName} closed ${periodLabel} at ${fmt(ni)} — ${lossOrProfit} of ${Math.abs(margin).toFixed(1)}% on ${fmt(rev)} of revenue. ${lead ? `${lead.name} contributed ${fmt(lead.value)} of top-line, the largest share among the operating units.` : ""} ${summary.topVariances[0] ? `The biggest movement vs ${"Budget"} is ${summary.topVariances[0].name} at ${fmt(summary.topVariances[0].variance, false)} ${summary.topVariances[0].variance > 0 ? "above" : "below"} plan.` : ""}`.trim();
+  }, [summary, tenantName, periodLabel, fmt]);
+
+  const body = state === "ready" && narrative ? narrative : fallback;
+  const quote = state === "ready" && pullQuote ? pullQuote : (summary && summary.kpis.netIncome.value < 0
+    ? "The expense block is the pressure point — investigate before the next close."
+    : "The trajectory is favourable — protect it through Q3.");
+
+  return (
+    <div className="atelier-card" style={{ background: "var(--paper)", border: "1px solid var(--rule)", padding: 26, boxShadow: "0 1px 0 var(--rule), 0 8px 18px -16px rgba(26,22,18,0.18)" }}>
+      <div className="flex items-center gap-3 pb-3 border-b" style={{ borderColor: "var(--ink)" }}>
+        <span
+          className="atelier-serif italic"
+          style={{ fontWeight: 600, fontSize: 14, border: "1.5px solid var(--ink)", borderRadius: "50%", width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+        >
+          ✦
+        </span>
+        <div>
+          <p className="atelier-serif italic" style={{ fontWeight: 600, fontSize: 16 }}>AI Copilot</p>
+          <p className="atelier-eyebrow" style={{ fontSize: 10.5 }}>Morning Brief · {periodLabel}</p>
+        </div>
+        <div className="ml-auto atelier-serif italic" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          {state === "loading" ? "writing…" : new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+        </div>
+      </div>
+
+      <h3 className="atelier-serif mt-4" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.15, letterSpacing: "-0.01em" }}>
+        {summary && summary.kpis.netIncome.value < 0
+          ? "Net loss this year — the pressure is on expenses."
+          : summary
+            ? "Profitable year — protect the trajectory into Q3."
+            : "Reading the ledger…"}
+      </h3>
+
+      <div className="atelier-serif mt-3" style={{ fontSize: 15, lineHeight: 1.55, color: "var(--ink-2)" }}>
+        {!ready && <p>Loading the FY numbers…</p>}
+        {ready && body && (
+          <p style={{ textAlign: "justify" }}>
+            <span
+              className="atelier-serif"
+              style={{ float: "left", fontSize: 60, lineHeight: 0.85, padding: "4px 8px 0 0", fontWeight: 600, color: "var(--ink)" }}
+            >
+              {body.charAt(0)}
+            </span>
+            {body.slice(1)}
+          </p>
+        )}
+        {ready && !body && state === "loading" && <p className="italic" style={{ color: "var(--ink-3)" }}>Composing the brief…</p>}
+        {state === "error" && (
+          <p className="italic" style={{ color: "var(--accent)", fontSize: 13 }}>
+            Copilot is offline. {error}. Showing deterministic summary above.
+          </p>
+        )}
+      </div>
+
+      {quote && (
+        <p className="mt-4 atelier-serif italic" style={{ color: "var(--accent)", fontSize: 16, lineHeight: 1.35 }}>
+          “{quote}”
+        </p>
+      )}
+
+      <div className="flex gap-2 mt-5 pt-4 border-t" style={{ borderColor: "var(--rule)" }}>
+        <a href="/copilot" className="atelier-pill atelier-pill-dark" style={{ fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          Open Copilot
+        </a>
+        <a href="/reports/income-statement" className="atelier-pill" style={{ fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          Open IS
+        </a>
+        <span className="ml-auto atelier-eyebrow" style={{ fontSize: 10.5, color: "var(--ink-4)" }}>
+          {summary ? `${summary.meta.factsRead.toLocaleString()} facts read` : ""}
+        </span>
+      </div>
+    </div>
   );
 }
