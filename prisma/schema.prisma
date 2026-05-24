@@ -164,6 +164,8 @@ model Tenant {
   copilotConvos   CopilotConversation[]
   snapshots       Snapshot[]
   lineageNotes    LineageNote[]
+  mappingRules    MappingRule[]
+  mappingLearning MappingLearning[]
 
   @@index([slug])
   @@map("tenants")
@@ -1012,6 +1014,61 @@ model Snapshot {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, status])
   @@map("snapshots")
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Smart Mapping Engine
+// One model, many uses: account ↔ account, bank-txn ↔ account,
+// dim-member ↔ dim-member, raw-column ↔ canonical field.
+// Every concrete mapping is a MappingRule. Every observation is logged
+// to MappingLearning so the suggester can rank by historical frequency.
+// ═══════════════════════════════════════════════════════════════════
+
+model MappingRule {
+  id            String   @id @default(uuid())
+  tenantId      String
+  kind          String                              // ACCOUNT | BANK_TXN | MEMBER | COLUMN
+  sourceSystem  String?                             // 'tally' | 'excel' | 'pdf-bank' | 'erp:netsuite' | null
+  sourceKey     String                              // raw source string we want to map
+  sourceContext Json?                               // optional extra signal (amount range, freq, regex, etc.)
+  targetMemberId String?                            // for ACCOUNT/MEMBER kinds
+  targetField   String?                             // for COLUMN kind ("revenue", "date", etc.)
+  confidence    Int      @default(100)              // 0..100 (AI suggestion vs human-approved)
+  authoredBy    String                              // user.id or 'ai'
+  approvedBy    String?                             // null until a human signs off
+  approvedAt    DateTime?
+  hitCount      Int      @default(0)
+  lastSeenAt    DateTime @default(now())
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind, sourceSystem, sourceKey, targetMemberId], name: "mapping_unique")
+  @@index([tenantId, kind, sourceKey])
+  @@index([tenantId, kind, hitCount(sort: Desc)])
+  @@map("mapping_rules")
+}
+
+// Every observation of (source string → chosen target). Logs the user's
+// pick whenever they confirm a mapping suggestion. The suggester reads
+// this table to rank suggestions by historical frequency.
+model MappingLearning {
+  id         String   @id @default(uuid())
+  tenantId   String
+  kind       String
+  sourceKey  String
+  targetMemberId String?
+  targetField    String?
+  userId     String
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind, sourceKey, createdAt(sort: Desc)])
+  @@map("mapping_learning")
 }
 
 // ═══════════════════════════════════════════════════════════════════
