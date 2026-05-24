@@ -78,28 +78,82 @@ export async function executeRule(
     if (!origin) throw new Error(`Origin '${spec.output.origin}' not seeded — run /api/__reset/origins`);
 
     const toWrite: any[] = [];
-    for (const src of sourceFacts) {
-      const newValue = applyFormula(spec.formula, Number(src.valueReporting));
-      if (newValue === null) continue;
 
-      toWrite.push({
-        tenantId:     ctx.tenantId,
-        accountId:    outputAccountId ?? src.accountId,
-        entityId:     src.entityId,
-        scenarioId:   outputScenarioId ?? src.scenarioId,
-        timeId:       src.timeId,
-        currencyId:   src.currencyId,
-        icpId:        src.icpId,
-        ud1Id:        src.ud1Id, ud2Id: src.ud2Id, ud3Id: src.ud3Id, ud4Id: src.ud4Id,
-        ud5Id:        src.ud5Id, ud6Id: src.ud6Id, ud7Id: src.ud7Id, ud8Id: src.ud8Id,
-        originId:     origin.id,
-        valueTxn:       newValue,
-        valueLocal:     newValue,
-        valueReporting: newValue,   // assume same ccy; FX_CONVERT specialises later
-        version:        1,
-        isCurrent:      true,
-        postedBy:       ctx.triggeredBy,
-      });
+    // ─── ALLOCATION — driver-based spread (special-case) ──────────────
+    if (spec.formula.kind === "allocation") {
+      const driverAcc = spec.formula.driverAccountId
+        ? { id: spec.formula.driverAccountId }
+        : spec.formula.driverAccountCode
+          ? await prisma.dimensionMember.findFirst({
+              where: { tenantId: ctx.tenantId, dimension: { kind: "ACCOUNT" }, memberCode: spec.formula.driverAccountCode },
+              select: { id: true },
+            })
+          : null;
+      if (!driverAcc) throw new Error("Allocation requires formula.driverAccountId or driverAccountCode");
+
+      // For each source row, find driver values at same period across all target entities,
+      // and spread source value proportionally. Targets = entities where driver has a non-zero value.
+      for (const src of sourceFacts) {
+        const driverFacts = await prisma.factRow.findMany({
+          where: {
+            tenantId:    ctx.tenantId,
+            scenarioId:  src.scenarioId,
+            timeId:      src.timeId,
+            accountId:   driverAcc.id,
+            isCurrent:   true,
+          },
+          select: { entityId: true, valueReporting: true, currencyId: true, icpId: true },
+        });
+        const driverTotal = driverFacts.reduce((s, d) => s + Number(d.valueReporting), 0);
+        if (driverTotal === 0) continue; // can't allocate by zero driver
+
+        const sourceValue = Number(src.valueReporting);
+        for (const df of driverFacts) {
+          const portion = Number(df.valueReporting) / driverTotal;
+          const allocated = sourceValue * portion;
+          toWrite.push({
+            tenantId:     ctx.tenantId,
+            accountId:    outputAccountId ?? src.accountId,
+            entityId:     df.entityId,                       // target entity from driver
+            scenarioId:   outputScenarioId ?? src.scenarioId,
+            timeId:       src.timeId,
+            currencyId:   df.currencyId,
+            icpId:        df.icpId,
+            originId:     origin.id,
+            valueTxn:       allocated,
+            valueLocal:     allocated,
+            valueReporting: allocated,
+            version:        1,
+            isCurrent:      true,
+            postedBy:       ctx.triggeredBy,
+          });
+        }
+      }
+    } else {
+      // ─── Regular per-row formula (percentage / sum / comp_build / fx) ─
+      for (const src of sourceFacts) {
+        const newValue = applyFormula(spec.formula, Number(src.valueReporting));
+        if (newValue === null) continue;
+
+        toWrite.push({
+          tenantId:     ctx.tenantId,
+          accountId:    outputAccountId ?? src.accountId,
+          entityId:     src.entityId,
+          scenarioId:   outputScenarioId ?? src.scenarioId,
+          timeId:       src.timeId,
+          currencyId:   src.currencyId,
+          icpId:        src.icpId,
+          ud1Id:        src.ud1Id, ud2Id: src.ud2Id, ud3Id: src.ud3Id, ud4Id: src.ud4Id,
+          ud5Id:        src.ud5Id, ud6Id: src.ud6Id, ud7Id: src.ud7Id, ud8Id: src.ud8Id,
+          originId:     origin.id,
+          valueTxn:       newValue,
+          valueLocal:     newValue,
+          valueReporting: newValue,   // assume same ccy; FX_CONVERT specialises later
+          version:        1,
+          isCurrent:      true,
+          postedBy:       ctx.triggeredBy,
+        });
+      }
     }
 
     // ─── Optional overwrite — delete prior same-origin same-output rows ─
@@ -174,9 +228,14 @@ function applyFormula(formula: RuleSpec["formula"], srcValue: number): number | 
     }
     case "sum":
       return srcValue;     // SUM just passes through; aggregation happens implicitly
-    case "fx_convert":
     case "allocation":
+      // Allocation is handled as a separate code path (see executeAllocation)
+      // because it needs the driver values and targets, not per-row math.
+      return srcValue;
     case "comp_build":
+      // Comp build is handled in its own code path (multiplies base by sum of multipliers)
+      return srcValue * (1 + (formula.multipliers ? Object.values(formula.multipliers).reduce((a, b) => a + b, 0) : 0));
+    case "fx_convert":
     case "custom":
       throw new Error(`Formula kind '${formula.kind}' not yet supported in v1 executor.`);
     default:

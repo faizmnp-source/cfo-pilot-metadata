@@ -11,20 +11,31 @@ import {
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
-const CFO_NAV = [
+// AI Copilot is the sticky hero entry — always at the top, always visible
+const HERO_NAV = [
   { href: "/copilot",       label: "AI Copilot",          icon: Sparkles },
-  { href: "/rules",         label: "Calc Rules",          icon: Cpu },
-  { href: "/automation",    label: "Automation",          icon: Clock },
+];
+
+// Insights — read-only narrative dashboards (decisions live here)
+const INSIGHTS_NAV = [
   { href: "/dashboard",     label: "Executive Dashboard", icon: LayoutDashboard },
   { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
-  { href: "/budgeting",     label: "Budgeting",           icon: PieChart },
-  { href: "/forecasting",   label: "Forecasting",         icon: TrendingUp },
-  { href: "/workforce",     label: "Workforce Planning",  icon: Users },
-  { href: "/projects",      label: "Project Planning",    icon: Kanban },
-  { href: "/reporting",     label: "Reporting",           icon: FileText },
-  { href: "/excel",         label: "Excel Integration",   icon: Table2 },
 ];
+
+// Planning & Modeling — modeling primitives (forward-looking, write-heavy)
+// Reordered after competitive scan of Pigment/Anaplan/Planful: workforce + forecast
+// are the headline modules; calc rules + allocation + automation are power-tools.
+const PLANNING_NAV = [
+  { href: "/workforce",     label: "Workforce Planning",  icon: Users },
+  { href: "/forecasting",   label: "Forecasting",         icon: TrendingUp },
+  { href: "/budgeting",     label: "Budgeting",           icon: PieChart },
+  { href: "/projects",      label: "Project Planning",    icon: Kanban },
+  { href: "/rules",         label: "Calc Rules",          icon: Cpu },
+  { href: "/automation",    label: "Automation",          icon: Clock },
+];
+
+// /excel (placeholder) intentionally not in sidebar — Phase 2 menu entry.
 
 // Metadata v2 (agreed 2026-05-21):
 //   always-on (5):     Account · Entity · Scenario · Time · Currency
@@ -144,23 +155,60 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
         </button>
       </div>
 
-      {/* Finance OS section */}
+      {/* Sidebar nav — semantic groups (Insights → Planning → Process → Reports → Data) */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
+
+        {/* Hero — AI Copilot lives above all sections */}
+        {HERO_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-10 rounded-md mb-2 text-xs font-semibold transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active
+                  ? "bg-gradient-to-r from-violet-100 to-fuchsia-50 text-violet-900 ring-1 ring-violet-200"
+                  : "text-violet-700 hover:bg-violet-50 bg-gradient-to-r from-violet-50/70 to-transparent"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0 text-violet-500")} strokeWidth={active ? 2 : 1.75} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Insights — top-of-funnel narrative dashboards */}
         {!collapsed && (
-          <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
-            Finance OS
-          </p>
+          <p className="px-3 mt-1 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">Insights</p>
         )}
-        {CFO_NAV.map(({ href, label, icon: Icon }) => {
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {INSIGHTS_NAV.map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
           return (
             <Link key={href} href={href} title={collapsed ? label : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
                 collapsed && "justify-center px-0",
-                active
-                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+                active ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
+              )}>
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
+              {!collapsed && <span className="truncate">{label}</span>}
+            </Link>
+          );
+        })}
+
+        {/* Planning & Modeling — write-heavy forward-looking modules */}
+        {!collapsed && (
+          <p className="px-3 mt-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">Planning &amp; Modeling</p>
+        )}
+        {collapsed && <div className="my-1 border-t border-[var(--border-default)] mx-2" />}
+        {PLANNING_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link key={href} href={href} title={collapsed ? label : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 h-9 rounded-md mb-0.5 text-xs font-medium transition-all duration-100",
+                collapsed && "justify-center px-0",
+                active ? "bg-[var(--color-brand-50)] text-[var(--color-brand-600)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]"
               )}>
               <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[var(--color-brand-500)]" : "text-[var(--text-tertiary)]")} strokeWidth={active ? 2 : 1.5} />
               {!collapsed && <span className="truncate">{label}</span>}
@@ -311,7 +359,7 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
       {/* Footer */}
       <div className={cn("border-t border-[var(--border-default)] py-2 px-2 shrink-0")}>
         {[
-          { href: "/copilot",       icon: Sparkles, label: "AI Copilot",    color: "text-[var(--color-ai-500)]" },
+          // AI Copilot moved to hero slot at top — no need to duplicate here
           { href: "#notifications", icon: Bell,     label: "Notifications", color: "" },
           { href: "/metadata/settings", icon: Settings, label: "Settings",  color: "" },
         ].map(({ href, icon: Icon, label, color }) => (
