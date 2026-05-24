@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
-import { Loader2, Save, RefreshCw, Plus } from "lucide-react";
+import { Loader2, Save, RefreshCw, Plus, Download, Upload } from "lucide-react";
 
 interface FxRate {
   id: string;
@@ -23,6 +23,22 @@ export default function FxRatesPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<{ fromCcy: string; rateType: string }>({ fromCcy: "", rateType: "CLOSING" });
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ committed: number; errors: string[] } | null>(null);
+
+  async function uploadFile(file: File) {
+    setUploading(true); setError(null); setUploadResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/v2/fx-rates/import", { method: "POST", credentials: "include", body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      setUploadResult({ committed: j.data.rowsCommitted, errors: j.data.errors ?? [] });
+      await refresh();
+    } catch (e: any) { setError(e.message); }
+    finally { setUploading(false); }
+  }
 
   async function refresh() {
     setLoading(true);
@@ -92,10 +108,32 @@ export default function FxRatesPage() {
                 <option value="HISTORICAL">Historical</option>
               </select>
             </label>
-            <button onClick={refresh} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-stone-900 text-white hover:bg-stone-800">
+            <a
+              href="/api/v2/fx-rates/import"
+              download="fx-rates-template.xlsx"
+              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-stone-200 text-stone-700 hover:bg-stone-50"
+            >
+              <Download className="h-3 w-3" /> Download Template
+            </a>
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-stone-200 text-stone-700 hover:bg-stone-50 cursor-pointer">
+              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              Upload Excel
+              <input
+                type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }}
+                disabled={uploading}
+              />
+            </label>
+            <button onClick={refresh} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-stone-900 text-white hover:bg-stone-800">
               {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Refresh
             </button>
           </div>
+          {uploadResult && (
+            <div className={`mt-3 rounded-md px-3 py-2 text-xs ${uploadResult.errors.length === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+              ✓ Uploaded <strong>{uploadResult.committed}</strong> rates
+              {uploadResult.errors.length > 0 && <span> · {uploadResult.errors.length} skipped rows: {uploadResult.errors.slice(0, 3).join("; ")}</span>}
+            </div>
+          )}
         </div>
 
         {error && <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-xs text-red-800 mb-4">⚠ {error}</div>}

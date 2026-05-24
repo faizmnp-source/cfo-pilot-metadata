@@ -553,6 +553,11 @@ async function main() {
       await prisma.factRow.createMany({ data: batch.splice(0, batch.length) });
     };
 
+    // For richer data, emit each leaf-account × month at MULTIPLE
+    // (Department × CostCenter) combos. Each combo gets its own row.
+    // ~50 leaves × 4 entities × 12 months × 4 combos = ~9,600 facts.
+    const COMBOS_PER_CELL = 4;
+
     for (const e of leafEntities) {
       const entId   = entByCode.get(e.code)!;
       const entCcy  = ccyByCode.get(e.baseCcy)!;
@@ -600,63 +605,69 @@ async function main() {
             if (icpMember) icpId = icpMember.id;
           }
 
-          // Pick dept + cc (rotate by month/account, not random — so consolidation actually aggregates across entities)
-          const dept = DEPARTMENTS[(a.code.charCodeAt(1) + mi) % DEPARTMENTS.length];
-          const cc   = COST_CENTERS[(a.code.charCodeAt(2) + mi) % COST_CENTERS.length];
+          // Emit N (department × costcenter) combos per cell. Each combo is
+          // a distinct intersection — the share of the cell value is split
+          // across combos with slight per-combo noise so totals sum.
+          for (let k = 0; k < COMBOS_PER_CELL; k++) {
+            const dept = DEPARTMENTS[(a.code.charCodeAt(1) + mi + k) % DEPARTMENTS.length];
+            const cc   = COST_CENTERS[(a.code.charCodeAt(2) + mi + k * 3) % COST_CENTERS.length];
 
-          // Round to nearest 100 in local ccy
-          value = Math.round(value / 100) * 100;
+            // Split the value across combos (each combo ~25% of the cell value)
+            const comboShare = (1 / COMBOS_PER_CELL) * (0.8 + rng() * 0.4);
+            const subValue = Math.round((value * comboShare) / 100) * 100;
 
-          // ACTUAL row
-          batch.push({
-            tenantId: TENANT_ID,
-            scenarioId: scnAct,
-            entityId: entId,
-            timeId: monthId,
-            accountId: acctId,
-            currencyId: entCcy,
-            icpId,
-            originId: originByCode.get("Import")!,
-            ud1Id: deptByCode.get(dept.code)!,
-            ud2Id: ccByCode.get(cc.code)!,
-            ud3Id: null, ud4Id: null, ud5Id: null, ud6Id: null, ud7Id: null, ud8Id: null,
-            valueTxn: value,
-            valueLocal: value,
-            valueReporting: value,
-            version: 1,
-            isCurrent: true,
-            postedBy: SEED_USER_ID,
-          });
+            // ACTUAL row
+            batch.push({
+              tenantId: TENANT_ID,
+              scenarioId: scnAct,
+              entityId: entId,
+              timeId: monthId,
+              accountId: acctId,
+              currencyId: entCcy,
+              icpId,
+              originId: originByCode.get("Import")!,
+              ud1Id: deptByCode.get(dept.code)!,
+              ud2Id: ccByCode.get(cc.code)!,
+              ud3Id: null, ud4Id: null, ud5Id: null, ud6Id: null, ud7Id: null, ud8Id: null,
+              valueTxn: subValue,
+              valueLocal: subValue,
+              valueReporting: subValue,
+              version: 1,
+              isCurrent: true,
+              postedBy: SEED_USER_ID,
+            });
 
-          // BUDGET row — same base but with 5-10% delta to make variance interesting
-          const bDelta = 0.95 + rng() * 0.15;
-          const bValue = Math.round((value * bDelta) / 100) * 100;
-          batch.push({
-            tenantId: TENANT_ID,
-            scenarioId: scnBud,
-            entityId: entId,
-            timeId: monthId,
-            accountId: acctId,
-            currencyId: entCcy,
-            icpId: entIcpNone,
-            originId: originByCode.get("Import")!,
-            ud1Id: deptByCode.get(dept.code)!,
-            ud2Id: ccByCode.get(cc.code)!,
-            ud3Id: null, ud4Id: null, ud5Id: null, ud6Id: null, ud7Id: null, ud8Id: null,
-            valueTxn: bValue,
-            valueLocal: bValue,
-            valueReporting: bValue,
-            version: 1,
-            isCurrent: true,
-            postedBy: SEED_USER_ID,
-          });
+            // Only k=0 emits BUDGET (so BUDGET stays as a leaner comparison set, ~2,400 rows)
+            if (k === 0) {
+              const bDelta = 0.95 + rng() * 0.15;
+              const bValue = Math.round((value * bDelta) / 100) * 100;
+              batch.push({
+                tenantId: TENANT_ID,
+                scenarioId: scnBud,
+                entityId: entId,
+                timeId: monthId,
+                accountId: acctId,
+                currencyId: entCcy,
+                icpId: entIcpNone,
+                originId: originByCode.get("Import")!,
+                ud1Id: deptByCode.get(dept.code)!,
+                ud2Id: ccByCode.get(cc.code)!,
+                ud3Id: null, ud4Id: null, ud5Id: null, ud6Id: null, ud7Id: null, ud8Id: null,
+                valueTxn: bValue,
+                valueLocal: bValue,
+                valueReporting: bValue,
+                version: 1,
+                isCurrent: true,
+                postedBy: SEED_USER_ID,
+              });
+              inserted += 1;
+            }
+            inserted += 1;
 
-          inserted += 2;
-
-          // Flush every 500 to avoid memory blow-up
-          if (batch.length >= 500) {
-            await flushBatch();
-            process.stdout.write(`.`);
+            if (batch.length >= 500) {
+              await flushBatch();
+              process.stdout.write(`.`);
+            }
           }
         }
       }
