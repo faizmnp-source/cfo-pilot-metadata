@@ -220,47 +220,101 @@ export async function buildTrialBalance(input: ReportInput): Promise<SectionedRe
 export async function buildIncomeStatement(input: ReportInput): Promise<SectionedReport> {
   const { byAccount, rowsRead } = await loadFactsForReport(input);
 
-  // Group leaves by type
-  const revenue: ReportLine[]  = [];
-  const expense: ReportLine[]  = [];
-  const other:   ReportLine[]  = [];   // unclassified accounts
+  // GAAP-style sub-classification by account code prefix:
+  //   4xxx = Operating Revenue
+  //   5xxx = Cost of Services (COGS)
+  //   6xxx = Operating Expenses
+  //   7xxx = Other Income / Expense (interest, FX)
+  //   8xxx = Tax
+  // Falls back to account_type bucketing for any non-numeric codes.
+  const operatingRevenue: ReportLine[] = [];
+  const cogs:             ReportLine[] = [];
+  const opex:             ReportLine[] = [];
+  const otherIncome:      ReportLine[] = [];   // 7xxx tagged REVENUE
+  const otherExpense:     ReportLine[] = [];   // 7xxx tagged EXPENSE
+  const tax:              ReportLine[] = [];   // 8xxx EXPENSE
+  const unclassified:     ReportLine[] = [];
+
+  function mkLine(value: number, account: AccountMeta): ReportLine {
+    return {
+      accountId: account.id, code: account.code, name: account.name, value,
+      indent: 1, isSubtotal: false, isBold: false, accountType: account.accountType,
+    };
+  }
 
   for (const { value, account } of Array.from(byAccount.values())) {
-    const line: ReportLine = {
-      accountId:   account.id,
-      code:        account.code,
-      name:        account.name,
-      value,
-      indent:      1,
-      isSubtotal:  false,
-      isBold:      false,
-      accountType: account.accountType,
-    };
-    if (account.accountType === "REVENUE")      revenue.push(line);
-    else if (account.accountType === "EXPENSE") expense.push(line);
-    else if (!["ASSET","LIABILITY","EQUITY"].includes(account.accountType ?? "")) other.push(line);
+    const line = mkLine(value, account);
+    const prefix = account.code.charAt(0);
+    if (account.accountType === "REVENUE") {
+      if (prefix === "4") operatingRevenue.push(line);
+      else if (prefix === "7") otherIncome.push(line);
+      else operatingRevenue.push(line);
+    } else if (account.accountType === "EXPENSE") {
+      if (prefix === "5") cogs.push(line);
+      else if (prefix === "6") opex.push(line);
+      else if (prefix === "7") otherExpense.push(line);
+      else if (prefix === "8") tax.push(line);
+      else opex.push(line);
+    } else if (!["ASSET","LIABILITY","EQUITY"].includes(account.accountType ?? "")) {
+      unclassified.push(line);
+    }
   }
 
   const sortByCode = (a: ReportLine, b: ReportLine) => a.code.localeCompare(b.code);
-  revenue.sort(sortByCode);
-  expense.sort(sortByCode);
-  other.sort(sortByCode);
+  [operatingRevenue, cogs, opex, otherIncome, otherExpense, tax, unclassified].forEach(arr => arr.sort(sortByCode));
 
-  const totalRevenue = revenue.reduce((s, r) => s + r.value, 0);
-  const totalExpense = expense.reduce((s, r) => s + r.value, 0);
-  const netIncome    = totalRevenue - totalExpense;
+  const totalOpRev   = operatingRevenue.reduce((s, r) => s + r.value, 0);
+  const totalCogs    = cogs.reduce((s, r) => s + r.value, 0);
+  const grossProfit  = totalOpRev - totalCogs;
+  const totalOpex    = opex.reduce((s, r) => s + r.value, 0);
+  const operatingIncome = grossProfit - totalOpex;
+  const totalOtherInc = otherIncome.reduce((s, r) => s + r.value, 0);
+  const totalOtherExp = otherExpense.reduce((s, r) => s + r.value, 0);
+  const netOther      = totalOtherInc - totalOtherExp;
+  const preTaxIncome  = operatingIncome + netOther;
+  const totalTax      = tax.reduce((s, r) => s + r.value, 0);
+  const netIncome     = preTaxIncome - totalTax;
 
   const sections: ReportSection[] = [];
-  if (revenue.length) sections.push({
-    title: "Revenue", type: "REVENUE", lines: revenue,
-    subtotal: { label: "Total Revenue", value: totalRevenue },
+  if (operatingRevenue.length) sections.push({
+    title: "Operating Revenue", type: "REVENUE", lines: operatingRevenue,
+    subtotal: { label: "Total Revenue", value: totalOpRev },
   });
-  if (expense.length) sections.push({
-    title: "Expenses", type: "EXPENSE", lines: expense,
-    subtotal: { label: "Total Expenses", value: totalExpense },
+  if (cogs.length) sections.push({
+    title: "Cost of Services", type: "EXPENSE", lines: cogs,
+    subtotal: { label: "Total COGS", value: totalCogs },
   });
-  if (other.length) sections.push({
-    title: "Unclassified (no account_type set)", lines: other,
+  // Inject Gross Profit as a single-row section
+  if (cogs.length || operatingRevenue.length) sections.push({
+    title: "Gross Profit", lines: [],
+    subtotal: { label: "Gross Profit", value: grossProfit },
+  });
+  if (opex.length) sections.push({
+    title: "Operating Expenses", type: "EXPENSE", lines: opex,
+    subtotal: { label: "Total Operating Expenses", value: totalOpex },
+  });
+  if (opex.length || cogs.length) sections.push({
+    title: "Operating Income (Loss)", lines: [],
+    subtotal: { label: operatingIncome < 0 ? "Operating Loss" : "Operating Income", value: operatingIncome },
+  });
+  if (otherIncome.length || otherExpense.length) {
+    const otherCombined = [...otherIncome, ...otherExpense.map(e => ({ ...e, value: -e.value }))]
+      .sort(sortByCode);
+    sections.push({
+      title: "Other Income / (Expense)", lines: otherCombined,
+      subtotal: { label: "Net Other Income / (Expense)", value: netOther },
+    });
+  }
+  if (otherIncome.length || otherExpense.length) sections.push({
+    title: "Pre-Tax Income", lines: [],
+    subtotal: { label: preTaxIncome < 0 ? "Pre-Tax Loss" : "Pre-Tax Income", value: preTaxIncome },
+  });
+  if (tax.length) sections.push({
+    title: "Tax", type: "EXPENSE", lines: tax,
+    subtotal: { label: "Total Tax", value: totalTax },
+  });
+  if (unclassified.length) sections.push({
+    title: "Unclassified (no account_type set)", lines: unclassified,
     subtotal: null,
   });
 
@@ -272,7 +326,7 @@ export async function buildIncomeStatement(input: ReportInput): Promise<Sectione
       rowsRead,
     },
     sections,
-    totals: { label: "Net Income", value: netIncome },
+    totals: { label: netIncome < 0 ? "Net Loss" : "Net Income", value: netIncome },
   };
 }
 
