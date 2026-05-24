@@ -19,6 +19,13 @@ const DATE_FORMATS = ["DD-MM-YYYY","MM/DD/YYYY","YYYY-MM-DD","DD/MM/YYYY"];
 const NUMBER_FORMATS = ["1,234.56","1,23,456.78","1.234,56","1 234,56"];
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+interface PovDefaults {
+  periodCode:          string | null;
+  scenarioCode:        string | null;
+  compareScenarioCode: string | null;
+  entityCode:          string | null;
+}
+
 interface Settings {
   appName: string;
   reportingCurrency: string;
@@ -29,6 +36,7 @@ interface Settings {
   logoUrl: string | null;
   primaryColor: string;
   isSetupComplete: boolean;
+  defaultPov?: PovDefaults;
 }
 
 // Feature flags (mirror tenant_features table). LocalStorage-backed for now;
@@ -62,6 +70,7 @@ export default function AppSettingsPage() {
     logoUrl: null,
     primaryColor: "#6366f1",
     isSetupComplete: false,
+    defaultPov: { periodCode: null, scenarioCode: null, compareScenarioCode: null, entityCode: null },
   });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -399,6 +408,64 @@ export default function AppSettingsPage() {
               {FISCAL_YEAR_START_OPTIONS.find((o) => o.value === settings.fiscalYearStart)?.description ?? "Used when generating time dimensions"}
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* Global POV Defaults — propagate to every page */}
+      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <DollarSign className="h-4 w-4 text-violet-500" />
+          <h2 className="font-semibold text-gray-900">Global POV Defaults</h2>
+          <span className="ml-auto text-[10px] uppercase tracking-widest font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded">OneStream-style</span>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-gray-600 mb-4">
+            These defaults populate <strong>every page</strong> — Dashboard, Reports, Forecast, Workforce. Users can still override per-page. Saves to <code className="text-xs bg-gray-100 px-1 rounded">Tenant.default*Code</code> columns.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default Period (Time member code)</label>
+              <input
+                type="text" placeholder="e.g. FY2026, 2026Q3, 2026M04"
+                value={settings.defaultPov?.periodCode ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, defaultPov: { ...(s.defaultPov ?? {} as PovDefaults), periodCode: e.target.value || null }}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Any Time member — engine aggregates to whichever level you pick.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default Scenario (code)</label>
+              <input
+                type="text" placeholder="e.g. Actual"
+                value={settings.defaultPov?.scenarioCode ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, defaultPov: { ...(s.defaultPov ?? {} as PovDefaults), scenarioCode: e.target.value || null }}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default Compare Scenario (code)</label>
+              <input
+                type="text" placeholder="e.g. Budget"
+                value={settings.defaultPov?.compareScenarioCode ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, defaultPov: { ...(s.defaultPov ?? {} as PovDefaults), compareScenarioCode: e.target.value || null }}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Used for variance views (Dashboard, etc.)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Default Entity (code)</label>
+              <input
+                type="text" placeholder="e.g. APOLLO_GRP"
+                value={settings.defaultPov?.entityCode ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, defaultPov: { ...(s.defaultPov ?? {} as PovDefaults), entityCode: e.target.value || null }}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">If a parent (e.g. GRP), Dashboard auto-expands to leaf descendants.</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
+            ⚠ After saving, hard-refresh once (Cmd-Shift-R) so all pages reload the cached defaults.
+          </p>
         </div>
       </section>
 

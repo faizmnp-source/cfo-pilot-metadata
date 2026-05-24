@@ -14,6 +14,8 @@
 import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, Play, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { TimePOVPicker } from "@/components/reports/TimePOVPicker";
+import { usePovDefaults } from "@/hooks/usePovDefaults";
+import { HierarchyMemberPicker } from "@/components/pickers/HierarchyMemberPicker";
 
 type Member = { id: string; memberCode: string; memberName: string; isActive?: boolean };
 
@@ -104,7 +106,7 @@ export default function ForecastingPage() {
             <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-3">1. Source — what to learn from</h2>
             <div className="space-y-3">
               <PickerMulti label="Accounts" items={accounts.map(a => ({ id: a.id, label: `${a.memberCode} — ${a.memberName}` }))} selected={selectedAccounts} onChange={setSelectedAccounts} placeholder="Select accounts to forecast…" />
-              <PickerMulti label="Entities" items={entities.map(e => ({ id: e.id, label: `${e.memberCode} — ${e.memberName}` }))} selected={selectedEntities} onChange={setSelectedEntities} placeholder="Select entities…" />
+              <HierarchyMemberPicker slug="entity" selectedIds={selectedEntities} onChange={setSelectedEntities} label="Entities (pick parent + 'all' for descendants)" />
               <div>
                 <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide">History scenario</label>
                 <select value={historyScenario} onChange={e => setHistoryScenario(e.target.value)} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm">

@@ -123,14 +123,32 @@ export default function DashboardPage() {
         setEntities(ents);
         setYears(times.filter(t => /^FY\d{4}$/.test(t.code)));
         setCcy(settings?.data?.reportingCurrency ?? "USD");
-        // Defaults
-        const act = scns.find(s => /^(ACT|ACTUAL)/i.test(s.code)) ?? scns[0];
-        const bud = scns.find(s => /^(BUD|BUDGET)/i.test(s.code));
-        const fy  = times.find(t => /^FY\d{4}$/.test(t.code));
+        // Defaults — prefer tenant-level App Settings, fall back to heuristic
+        const pov = settings?.data?.defaultPov ?? {};
+        const act = (pov.scenarioCode && scns.find((s: Member) => s.code === pov.scenarioCode))
+                 ?? scns.find(s => /^(ACT|ACTUAL|Actual)/i.test(s.code)) ?? scns[0];
+        const bud = (pov.compareScenarioCode && scns.find((s: Member) => s.code === pov.compareScenarioCode))
+                 ?? scns.find(s => /^(BUD|BUDGET|Budget)/i.test(s.code));
+        const wantPeriod = pov.periodCode;
         if (act) setScenarioId(act.id);
         if (bud) setCompareScenarioId(bud.id);
-        if (fy) setYearCode(fy.code);
-        setSelectedEntityIds([]);   // empty = all leaves
+        if (wantPeriod) {
+          setYearCode(wantPeriod);
+        } else {
+          const fy = times.find(t => /^FY\d{4}$/.test(t.code));
+          if (fy) setYearCode(fy.code);
+        }
+        // Entity: if tenant default is a parent, expand to its leaf descendants (for "all hospitals")
+        if (pov.entityCode) {
+          try {
+            const r = await fetch(`/api/v2/members/entity/descendants?parentCode=${encodeURIComponent(pov.entityCode)}&onlyLeaves=true`, { credentials: "include" });
+            const j = await r.json();
+            const ids = (j?.data?.descendants ?? []).map((d: any) => d.id);
+            setSelectedEntityIds(ids.length ? ids : []);
+          } catch { setSelectedEntityIds([]); }
+        } else {
+          setSelectedEntityIds([]);   // empty = all leaves
+        }
       } catch (e: any) { setError(e.message); }
     })();
   }, []);

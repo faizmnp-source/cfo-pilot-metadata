@@ -1,8 +1,8 @@
 "use client";
 
-// Report body — renders SectionedReport from the API. Each section gets
-// a colour-keyed header, lines with proper indent + bold for subtotals.
-// Numbers shown with currency symbol, accounting-style negatives.
+// Report body — finance-document aesthetic.
+// Serif title fonts, accounting black-on-cream, tabular monospace numbers,
+// subtotal single underline, grand-total double underline + bold.
 
 import { formatMoney } from "./ReportLayout";
 
@@ -24,58 +24,71 @@ interface ReportSection {
   type?:    string;
 }
 
-// Section colour key by account type. Subtle, document-feel.
-const SECTION_THEME: Record<string, { dotBg: string; accentBg: string; label: string }> = {
-  REVENUE:   { dotBg: "bg-emerald-500", accentBg: "bg-emerald-50",  label: "text-emerald-900" },
-  EXPENSE:   { dotBg: "bg-rose-500",    accentBg: "bg-rose-50",     label: "text-rose-900" },
-  ASSET:     { dotBg: "bg-sky-500",     accentBg: "bg-sky-50",      label: "text-sky-900" },
-  LIABILITY: { dotBg: "bg-amber-500",   accentBg: "bg-amber-50",    label: "text-amber-900" },
-  EQUITY:    { dotBg: "bg-violet-500",  accentBg: "bg-violet-50",   label: "text-violet-900" },
-  DEFAULT:   { dotBg: "bg-stone-400",   accentBg: "bg-stone-50",    label: "text-stone-900" },
+// Section accent — restrained, financial-document feel
+const SECTION_THEME: Record<string, { dot: string; rule: string; subtotalBg: string; label: string }> = {
+  REVENUE:   { dot: "bg-emerald-700",  rule: "border-emerald-300/60",  subtotalBg: "bg-emerald-50/50",  label: "text-emerald-900" },
+  EXPENSE:   { dot: "bg-rose-700",     rule: "border-rose-300/60",     subtotalBg: "bg-rose-50/40",     label: "text-rose-900" },
+  ASSET:     { dot: "bg-sky-700",      rule: "border-sky-300/60",      subtotalBg: "bg-sky-50/50",      label: "text-sky-900" },
+  LIABILITY: { dot: "bg-amber-700",    rule: "border-amber-300/60",    subtotalBg: "bg-amber-50/50",    label: "text-amber-900" },
+  EQUITY:    { dot: "bg-violet-700",   rule: "border-violet-300/60",   subtotalBg: "bg-violet-50/50",   label: "text-violet-900" },
+  DEFAULT:   { dot: "bg-stone-500",    rule: "border-stone-300",       subtotalBg: "bg-stone-50",       label: "text-stone-900" },
 };
 
 export function ReportBody({ sections, ccy = "USD" }: { sections: ReportSection[]; ccy?: string }) {
   if (!sections.length) {
     return (
-      <div className="py-16 text-center text-stone-500 text-sm">
-        No data for this POV.<br />
-        <span className="text-xs text-stone-400">Load facts via Data Load or Data Input, then refresh.</span>
+      <div className="py-16 text-center text-stone-500" style={{ fontFamily: "'Georgia', 'Garamond', serif" }}>
+        <p className="text-base italic">No data for this POV.</p>
+        <p className="text-xs text-stone-400 mt-2">Load facts via Data Load or Data Input, then refresh.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7" style={{ fontFamily: "'Georgia', 'Garamond', 'Cambria', serif" }}>
       {sections.map((s, i) => {
         const theme = SECTION_THEME[s.type ?? "DEFAULT"] ?? SECTION_THEME.DEFAULT;
         return (
           <section key={`${s.title}-${i}`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <span className={`inline-block w-2 h-2 rounded-full ${theme.dotBg}`} />
-                <h3 className={`text-[11px] uppercase tracking-[0.18em] font-bold ${theme.label}`}>{s.title}</h3>
+            {/* Section header — restrained, like a financial statement */}
+            <div className={`flex items-baseline justify-between pb-1.5 mb-1 border-b ${theme.rule}`}>
+              <div className="flex items-center gap-2">
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${theme.dot}`} />
+                <h3 className={`text-[11px] uppercase tracking-[0.25em] font-bold ${theme.label}`} style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                  {s.title}
+                </h3>
               </div>
-              <span className="text-[10px] text-stone-400 font-medium">{s.lines.length} line{s.lines.length === 1 ? "" : "s"}</span>
+              <span className="text-[9px] text-stone-400 font-medium uppercase tracking-widest" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                in {ccy} thousands
+              </span>
             </div>
             <table className="w-full">
               <tbody>
                 {s.lines.map((line, li) => (
-                  <tr key={line.accountId} className="group hover:bg-stone-50/60 transition-colors border-b border-stone-50 last:border-b-0">
-                    <td className="py-2 pr-4" style={{ paddingLeft: `${8 + line.indent * 16}px` }}>
-                      <span className="font-mono text-[10px] text-stone-400 mr-3 tabular-nums">{line.code}</span>
-                      <span className={`text-sm ${line.isBold ? "font-semibold text-stone-900" : "text-stone-800"}`}>{line.name}</span>
+                  <tr key={line.accountId} className="group hover:bg-stone-50/60 transition-colors">
+                    <td className="py-1.5 pr-4" style={{ paddingLeft: `${8 + line.indent * 18}px` }}>
+                      <span className="font-mono text-[10px] text-stone-400 mr-3 tabular-nums" style={{ fontFamily: "'SF Mono', 'Monaco', 'Menlo', monospace" }}>
+                        {line.code}
+                      </span>
+                      <span className={`text-[13px] ${line.isBold ? "font-semibold text-stone-900" : "text-stone-700"}`}>
+                        {line.name}
+                      </span>
                     </td>
-                    <td className={`py-2 pr-2 text-right font-mono text-sm tabular-nums w-44 ${line.value < 0 ? "text-rose-700" : "text-stone-900"}`}>
+                    <td className={`py-1.5 pr-2 text-right font-mono text-[13px] tabular-nums w-48 ${line.value < 0 ? "text-rose-700" : "text-stone-900"}`}
+                        style={{ fontFamily: "'SF Mono', 'Monaco', 'Menlo', monospace" }}>
                       {formatMoney(line.value, { ccy })}
                     </td>
                   </tr>
                 ))}
                 {s.subtotal && (
-                  <tr className={`${theme.accentBg} border-t-2 border-stone-300`}>
-                    <td className="py-2.5 pr-4 pl-2">
-                      <span className={`text-[12px] font-bold uppercase tracking-wider ${theme.label}`}>{s.subtotal.label}</span>
+                  <tr className={`${theme.subtotalBg}`}>
+                    <td className={`py-2 pr-4 pl-2 border-t-2 ${theme.rule}`}>
+                      <span className={`text-[11px] font-bold uppercase tracking-[0.15em] ${theme.label}`} style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+                        {s.subtotal.label}
+                      </span>
                     </td>
-                    <td className={`py-2.5 pr-2 text-right font-mono text-base font-extrabold tabular-nums w-44 ${s.subtotal.value < 0 ? "text-rose-700" : theme.label}`}>
+                    <td className={`py-2 pr-2 text-right font-mono text-[14px] font-extrabold tabular-nums w-48 border-t-2 ${theme.rule} ${s.subtotal.value < 0 ? "text-rose-700" : theme.label}`}
+                        style={{ fontFamily: "'SF Mono', 'Monaco', 'Menlo', monospace" }}>
                       {formatMoney(s.subtotal.value, { ccy })}
                     </td>
                   </tr>

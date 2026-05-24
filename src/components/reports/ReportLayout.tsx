@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { Download, RefreshCw, Loader2, Sparkles } from "lucide-react";
 import { TimePOVPicker } from "./TimePOVPicker";
+import { usePovDefaults } from "@/hooks/usePovDefaults";
 
 type Member = { id: string; code: string; name: string };
 
@@ -40,7 +41,9 @@ export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad,
 
   const [scenarioId, setScenarioId] = useState("");
   const [entityId,   setEntityId]   = useState("");
-  const [yearCode,   setYearCode]   = useState("");      // now accepts ANY Time member (year/half/quarter/month)
+  const [yearCode,   setYearCode]   = useState("");      // accepts ANY Time member
+
+  const { defaults: povDef } = usePovDefaults();          // tenant-level POV defaults
 
   useEffect(() => {
     (async () => {
@@ -49,13 +52,20 @@ export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad,
       ]);
       setScenarios(scns);
       setEntities(ents);
-      if (scns[0]) setScenarioId(scns[0].id);
-      if (ents[0]) setEntityId(ents[0].id);
-      // Default to most recent FY (matches previous behavior)
-      const fy = all_times.find(t => /^FY\d{4}$/.test(t.code));
-      if (fy) setYearCode(fy.code);
+      // Pick scenario: prefer tenant default by code, fall back to first
+      const scn = (povDef.scenarioCode && scns.find(s => s.code === povDef.scenarioCode)) || scns[0];
+      const ent = (povDef.entityCode   && ents.find(e => e.code === povDef.entityCode))   || ents[0];
+      if (scn) setScenarioId(scn.id);
+      if (ent) setEntityId(ent.id);
+      // Time: defaults pass a code; engine accepts any level (year/quarter/month)
+      if (povDef.periodCode) {
+        setYearCode(povDef.periodCode);
+      } else {
+        const fy = all_times.find(t => /^FY\d{4}$/.test(t.code));
+        if (fy) setYearCode(fy.code);
+      }
     })();
-  }, []);
+  }, [povDef.scenarioCode, povDef.entityCode, povDef.periodCode]);
 
   useEffect(() => {
     if (scenarioId && entityId && yearCode && onLoad) {
