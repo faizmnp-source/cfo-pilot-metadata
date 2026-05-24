@@ -10,6 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Scale, Loader2, Play, AlertCircle, TrendingUp, TrendingDown, Minus, ThumbsUp, ThumbsDown, Circle } from "lucide-react";
 import { TimePOVPicker } from "@/components/reports/TimePOVPicker";
 import { HierarchyMemberPicker } from "@/components/pickers/HierarchyMemberPicker";
+import { ForecastWaterfall } from "@/components/forecast/ForecastWaterfall";
+import { sourceFromVarianceRows } from "@/lib/forecast/waterfall";
 
 type Member = { id: string; memberCode: string; memberName: string; isActive?: boolean };
 type Favorability = "favorable" | "unfavorable" | "flat" | "neutral";
@@ -247,8 +249,26 @@ export default function ForecastVariancePage() {
               </section>
             )}
 
+            {/* Sprint P — Forecast → Actual waterfall. Aggregates per-row variance by
+                account, picks top contributors, and bridges Forecast → Actual visually. */}
+            <section className="bg-white rounded-lg border border-stone-200 p-5 mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide">4. Variance waterfall (Forecast → Actual)</h2>
+                <p className="text-[10px] text-stone-400 italic">Top 8 accounts by |variance|; remainder rolled into "Other"</p>
+              </div>
+              <ForecastWaterfall
+                forecastTotal={result.totals.forecast}
+                actualTotal={result.totals.actual}
+                rows={sourceFromVarianceRows(result.rows as any)}
+                forecastLabel={result.forecastScenarioCode}
+                actualLabel={result.actualScenarioCode}
+                topN={8}
+                height={320}
+              />
+            </section>
+
             <section className="bg-white rounded-lg border border-stone-200 p-5">
-              <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-3">4. Per-row breakdown ({sortedRows.length})</h2>
+              <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-3">5. Per-row breakdown ({sortedRows.length})</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
