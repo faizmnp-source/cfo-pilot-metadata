@@ -13,6 +13,9 @@ import { varianceAnalysisSkill }    from "./variance-analysis";
 import { closeManagementSkill }     from "./close-management";
 import { reconciliationSkill }      from "./reconciliation";
 import { journalEntrySkill }        from "./journal-entry";
+import { auditSupportSkill }        from "./audit-support";
+import { soxTestingSkill }          from "./sox-testing";
+import { journalEntryPrepSkill }    from "./journal-entry-prep";
 
 export const FINANCE_SKILLS: Record<string, FinanceSkill> = {
   [financialStatementsSkill.name]: financialStatementsSkill,
@@ -20,6 +23,9 @@ export const FINANCE_SKILLS: Record<string, FinanceSkill> = {
   [closeManagementSkill.name]:     closeManagementSkill,
   [reconciliationSkill.name]:      reconciliationSkill,
   [journalEntrySkill.name]:        journalEntrySkill,
+  [auditSupportSkill.name]:        auditSupportSkill,
+  [soxTestingSkill.name]:          soxTestingSkill,
+  [journalEntryPrepSkill.name]:    journalEntryPrepSkill,
 };
 
 /** Anthropic tool definitions auto-built from registry */

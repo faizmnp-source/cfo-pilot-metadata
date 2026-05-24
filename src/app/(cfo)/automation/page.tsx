@@ -28,9 +28,9 @@ const KIND_META: Record<string, { icon: any; label: string; supported: boolean; 
   EXPORT_METADATA:   { icon: Database,        label: "Export Metadata",   supported: true,  tone: "bg-sky-50 text-sky-700"        },
   RUN_CONSOLIDATION: { icon: GitBranch,       label: "Run Consolidation", supported: true,  tone: "bg-emerald-50 text-emerald-700" },
   RUN_CALC_RULE:     { icon: Sparkles,        label: "Run Calc Rule",     supported: true,  tone: "bg-violet-50 text-violet-700"   },
+  RUN_PIPELINE:      { icon: Network,         label: "Run Pipeline",      supported: true,  tone: "bg-fuchsia-50 text-fuchsia-700" },
   EXPORT_FACTS:      { icon: FileSpreadsheet, label: "Export Facts",      supported: false, tone: "bg-stone-100 text-stone-500"    },
   SEND_REPORT:       { icon: FileText,        label: "Send Report",       supported: false, tone: "bg-stone-100 text-stone-500"    },
-  RUN_PIPELINE:      { icon: Network,         label: "Run Pipeline",      supported: false, tone: "bg-stone-100 text-stone-500"    },
 };
 
 export default function AutomationPage() {
@@ -195,9 +195,9 @@ function CreateJobModal({ onClose, onCreated }: { onClose: () => void; onCreated
     EXPORT_METADATA:   "{}",
     RUN_CONSOLIDATION: '{ "scenarioId": "uuid", "entityId": "uuid", "yearCode": "FY2026" }',
     RUN_CALC_RULE:     '{ "ruleId": "uuid" }',
+    RUN_PIPELINE:      '{ "steps": [{ "ruleId": "uuid-1" }, { "ruleId": "uuid-2", "continueOnError": true }] }',
     EXPORT_FACTS:      "{}  (Phase 2)",
     SEND_REPORT:       "{}  (Phase 2)",
-    RUN_PIPELINE:      "{}  (Phase 2)",
   };
 
   return (

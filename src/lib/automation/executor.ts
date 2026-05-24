@@ -116,9 +116,59 @@ export async function executeJob(
         break;
       }
 
+      case "RUN_PIPELINE": {
+        // Chain multiple CalcRules in sequence. params.steps = [{ruleId, continueOnError?}]
+        const steps = Array.isArray(params.steps) ? params.steps : [];
+        if (!steps.length) throw new Error("params.steps required (non-empty array of {ruleId, continueOnError?})");
+
+        const stepResults: any[] = [];
+        let abortAfter = -1;
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          if (!step.ruleId) {
+            stepResults.push({ index: i, ruleId: null, status: "FAILED", errorMessage: "step missing ruleId" });
+            if (!step.continueOnError) { abortAfter = i; break; }
+            continue;
+          }
+          const rule = await prisma.calcRule.findFirst({
+            where: { id: step.ruleId, tenantId: ctx.tenantId },
+          });
+          if (!rule) {
+            stepResults.push({ index: i, ruleId: step.ruleId, status: "FAILED", errorMessage: "Rule not found" });
+            if (!step.continueOnError) { abortAfter = i; break; }
+            continue;
+          }
+          if (rule.status !== "ACTIVE") {
+            stepResults.push({ index: i, ruleId: step.ruleId, ruleCode: rule.code, status: "FAILED", errorMessage: `Rule status is ${rule.status} (must be ACTIVE)` });
+            if (!step.continueOnError) { abortAfter = i; break; }
+            continue;
+          }
+          const result = await executeRule(
+            rule.id,
+            rule.spec as unknown as RuleSpec,
+            { tenantId: ctx.tenantId, triggeredBy: `pipeline:${job.id}:step${i}` }
+          );
+          stepResults.push({ index: i, ruleId: rule.id, ruleCode: rule.code, ...result });
+          if (result.status === "FAILED" && !step.continueOnError) { abortAfter = i; break; }
+        }
+
+        const totalRows = stepResults.reduce((s, r) => s + (r.rowsWritten ?? 0), 0);
+        output = {
+          kind: "pipeline_result",
+          totalSteps: steps.length,
+          stepsCompleted: abortAfter === -1 ? steps.length : abortAfter + 1,
+          aborted: abortAfter !== -1,
+          totalRowsWritten: totalRows,
+          steps: stepResults,
+        };
+        if (stepResults.some(r => r.status === "FAILED")) {
+          throw new Error(`Pipeline had ${stepResults.filter(r => r.status === "FAILED").length} failed step(s); see output.steps for detail`);
+        }
+        break;
+      }
+
       case "EXPORT_FACTS":
       case "SEND_REPORT":
-      case "RUN_PIPELINE":
         throw new Error(`Job kind '${job.kind}' not yet supported in v1 executor.`);
 
       default:
