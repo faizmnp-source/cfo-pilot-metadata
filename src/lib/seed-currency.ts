@@ -28,11 +28,15 @@ type SeedSpec = {
   sortOrder:   number;
 };
 
-function seedSpecs(baseIso: string = "USD"): SeedSpec[] {
+// Only seed Local + Reporting placeholders by default. The actual ISO base
+// currency is set by the tenant admin via App Settings → /api/v2/tenant-features
+// `reporting_currency` flag. Previously this hardcoded USD on every seed,
+// which forced multi-currency tenants to manually flip is_base on a different
+// member after first use. Now: no auto-base, admin picks.
+function seedSpecs(): SeedSpec[] {
   return [
     { code: LOCAL_CURRENCY_CODE,     name: "Local",      description: "Each entity's own base currency. Resolved at read time.", properties: { is_local: true, is_system: true }, sortOrder: 0 },
     { code: REPORTING_CURRENCY_CODE, name: "Reporting",  description: "Tenant reporting currency. Resolves to the is_base=true ISO currency.", properties: { is_reporting: true, is_system: true }, sortOrder: 1 },
-    { code: baseIso,                 name: "US Dollar",  description: "Tenant base currency. Rename or flip is_base in the Library.", properties: { iso_code: baseIso, is_base: true }, sortOrder: 2 },
   ];
 }
 
@@ -73,17 +77,27 @@ export async function ensureCurrencySeed(
     idByCode.set(s.code, created.id);
   }
 
-  // Caller asks for a specific code — return it, else fall back to base.
+  // Caller asks for a specific code — return it, else fall back to whatever
+  // is flagged is_base=true (admin-picked base), else any active currency.
   const picked = idByCode.get(pickCode);
   if (picked) return picked;
-  const baseId = idByCode.get("USD");
-  if (baseId) return baseId;
+  const baseMember = await prisma.dimensionMember.findFirst({
+    where: {
+      tenantId, dimensionId: dim.id, isActive: true,
+      properties: { path: ["is_base"], equals: true } as any,
+    },
+    select: { id: true },
+  });
+  if (baseMember) return baseMember.id;
   // Last resort — return any active currency member
   const anyActive = await prisma.dimensionMember.findFirst({
     where: { tenantId, dimensionId: dim.id, isActive: true },
     select: { id: true },
   });
-  return anyActive!.id;
+  if (!anyActive) {
+    throw new Error("No currency configured. Admin: set Reporting Currency in App Settings.");
+  }
+  return anyActive.id;
 }
 
 /** Returns the tenant's reporting currency member id. */
