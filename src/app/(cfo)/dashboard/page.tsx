@@ -6,7 +6,8 @@ import { CFOBadge } from "@/components/cfo/Badge";
 import { RevenueChart } from "@/components/charts/RevenueChart";
 import { BudgetBarChart } from "@/components/charts/BudgetBarChart";
 import { CopilotPanel } from "@/components/cfo/CopilotPanel";
-import { kpiData, revenueChartData, departmentData } from "@/lib/cfo-data";
+import { kpiData as dummyKpis, revenueChartData, departmentData } from "@/lib/cfo-data";
+import { useDashboardData } from "@/lib/use-dashboard-data";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
 import { Sparkles, AlertTriangle, Clock, TrendingDown, Download, RefreshCw } from "lucide-react";
 
@@ -20,12 +21,27 @@ const deptChartData = departmentData.map(d => ({ name: d.name.split(" ")[0], bud
 
 export default function DashboardPage() {
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const live = useDashboardData();
+
+  // Use live numbers when we have real data; fall back to the dummy preview
+  // until the tenant has loaded any facts. Sparklines / deltas stay dummy in
+  // v1 — those need historical time-series which we'll add in the next slice.
+  const kpiData = live.hasData ? {
+    revenue:  { ...dummyKpis.revenue,  value: live.revenue.value,  trend: live.revenue.trend  },
+    ebitda:   { ...dummyKpis.ebitda,   value: live.ebitda.value,   trend: live.ebitda.trend   },
+    cash:     { ...dummyKpis.cash,     value: live.cash.value,     trend: live.cash.trend     },
+    burnRate: { ...dummyKpis.burnRate, value: live.burnRate.value, trend: live.burnRate.trend },
+  } : dummyKpis;
 
   return (
     <>
       <CFOHeader
         title="Executive Dashboard"
-        subtitle="FY 2026 · Q2 · Last synced 2 min ago"
+        subtitle={live.loaded
+          ? live.hasData
+              ? `${live.entityName} · ${live.yearCode} · live from /api/v2/reports`
+              : `${live.entityName ?? "—"} · ${live.yearCode ?? "—"} · sample data (load facts to see live numbers)`
+          : "Loading…"}
         actions={
           <div className="flex items-center gap-2">
             <button
