@@ -88,7 +88,11 @@ export async function GET(req: NextRequest) {
   const [tenant, reportingCurrency] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: auth.tid },
-      select: { id:true, name:true, slug:true, isActive:true, createdAt:true },
+      select: {
+        id:true, name:true, slug:true, isActive:true, createdAt:true,
+        defaultPeriodCode: true, defaultScenarioCode: true,
+        defaultCompareScenarioCode: true, defaultEntityCode: true,
+      },
     }),
     getReportingCurrencyIso(auth.tid),
   ]);
@@ -103,6 +107,13 @@ export async function GET(req: NextRequest) {
     numberFormat:      "1,234.56",
     timezone:          "UTC",
     isSetupComplete:   true,
+    // Global POV defaults — used by every page as initial POV state
+    defaultPov: {
+      periodCode:          tenant?.defaultPeriodCode          ?? null,
+      scenarioCode:        tenant?.defaultScenarioCode        ?? null,
+      compareScenarioCode: tenant?.defaultCompareScenarioCode ?? null,
+      entityCode:          tenant?.defaultEntityCode          ?? null,
+    },
   });
 }
 
@@ -123,6 +134,19 @@ export async function PUT(req: NextRequest) {
       where: { id: auth.tid },
       data:  { name: body.appName.trim() },
     });
+  }
+
+  // Save global POV defaults (any subset can be sent)
+  if (body.defaultPov && typeof body.defaultPov === "object") {
+    const p = body.defaultPov;
+    const updateData: any = {};
+    if ("periodCode"           in p) updateData.defaultPeriodCode          = p.periodCode || null;
+    if ("scenarioCode"         in p) updateData.defaultScenarioCode        = p.scenarioCode || null;
+    if ("compareScenarioCode"  in p) updateData.defaultCompareScenarioCode = p.compareScenarioCode || null;
+    if ("entityCode"           in p) updateData.defaultEntityCode          = p.entityCode || null;
+    if (Object.keys(updateData).length > 0) {
+      await prisma.tenant.update({ where: { id: auth.tid }, data: updateData });
+    }
   }
 
   // Persist reporting currency: flips is_base on the matching Currency member.

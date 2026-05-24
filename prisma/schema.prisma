@@ -132,6 +132,14 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ─── Global POV defaults — propagate as initial state to every page ───
+  // (Per OneStream convention: tenant has a "current POV" that becomes the
+  //  default everywhere; users can still override per-page.)
+  defaultPeriodCode         String?    // e.g. "FY2026" / "2026Q3" / "2026M04"
+  defaultScenarioCode       String?    // e.g. "Actual"
+  defaultCompareScenarioCode String?    // e.g. "Budget" — for variance views
+  defaultEntityCode         String?    // e.g. "APOLLO_GRP" (consolidated)
+
   users           User[]
   features        TenantFeature[]
   dimensions      Dimension[]
@@ -154,6 +162,7 @@ model Tenant {
   automationJobs  AutomationJob[]
   jobRuns         JobRun[]
   copilotConvos   CopilotConversation[]
+  snapshots       Snapshot[]
 
   @@index([slug])
   @@map("tenants")
@@ -906,6 +915,52 @@ model CopilotMessage {
 
   @@index([conversationId, createdAt])
   @@map("copilot_messages")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Snapshots — point-in-time backup of fact_rows (and metadata).
+// Pattern: store the captured rows as a JSONB payload on the Snapshot
+// record itself, rather than copying into fact_rows with a synthetic
+// originId. This avoids surgery on the long fact unique constraint and
+// keeps snapshots fully independent of live data.
+//
+// Scope is captured in `scope` (Json): { scenarioCode?, entityCodes?,
+// periodCodes?, accountCodes? }. Empty scope = full tenant snapshot.
+// Restore re-materialises fact_rows from payload, marking matching live
+// rows as superseded (isCurrent=false) — implemented in a later ship.
+// ═══════════════════════════════════════════════════════════════════
+
+model Snapshot {
+  id           String   @id @default(uuid())
+  tenantId     String
+
+  label        String                                // human-readable, e.g. "Q1 2026 close"
+  description  String?
+
+  // Scope filters that defined what was captured
+  scope        Json     @default("{}")               // { scenarioCode?, entityCodes?, periodCodes?, accountCodes? }
+  scenarioCode String?                                // denormalised single-scenario hint for UI sorting
+  periodHint   String?                                // e.g. "FY2026" / "2026Q1" — for sorting in UI
+
+  // Snapshot payload — array of fact-row projections
+  // Each item: { scenarioId, timeId, entityId, accountId, icpId, originId,
+  //              ud1Id..ud8Id, valueTxn, valueLocal, valueReporting,
+  //              currencyId, scenarioCode, periodCode, entityCode, accountCode }
+  payload      Json     @default("[]")
+  factCount    Int      @default(0)
+  payloadBytes Int      @default(0)                  // approx size for display
+  status       String   @default("READY")            // READY | RESTORED | DELETED
+
+  createdById  String                                 // user.id of creator
+  createdAt    DateTime @default(now())
+  restoredAt   DateTime?
+  restoredById String?
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@map("snapshots")
 }
 
 // ═══════════════════════════════════════════════════════════════════

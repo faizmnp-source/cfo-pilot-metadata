@@ -153,16 +153,11 @@ function DataInputPage() {
         fetchEnabledUdDims(),
       ]);
       setUdDims(uds);
-      // Auto-pick the first member of each UD so the grid loads cleanly on
-      // first visit. User can change pick before saving.
-      setUdSelections(prev => {
-        const next = { ...prev };
-        for (const ud of uds) {
-          const key = udField(ud.slot);
-          if (!next[key] && ud.members[0]) next[key] = ud.members[0].id;
-        }
-        return next;
-      });
+      // DEFAULT: UD selection is empty = "no filter" (so revenue facts with
+      // ud=NULL show alongside facts assigned to specific UD members).
+      // Picking a UD value FILTERS the grid to that intersection.
+      // (Previously auto-picked first member which locked grid to one position
+      //  and hid all NULL-UD facts — Faizan reported this as a blocker.)
       setScenarios(scns);
       setEntities(ents);
       setYears(all_times.filter(m => /^FY\d{4}$/.test(m.code)));
@@ -202,12 +197,9 @@ function DataInputPage() {
     if (!entityId || !yearCode) return;
     if (layout === "STANDARD" && !scenarioId) return;
     if ((layout === "VARIANCE" || layout === "SCENARIO_STACK") && (!form || form.scenarioIds.length === 0)) return;
-    // Each enabled UD must have a member picked. Otherwise the grid would
-    // mix all UD combos together (e.g. Department × Cost Center → wrong
-    // sums in every cell).
-    for (const ud of udDims) {
-      if (!udSelections[udField(ud.slot)]) return;
-    }
+    // UD picks are OPTIONAL — empty = no filter (show all). If user picks
+    // a specific UD member, the grid filters to that intersection.
+    // No more "block until UD picked" since that hid revenue facts with ud=NULL.
 
     setGridLoading(true);
     setError(null);
