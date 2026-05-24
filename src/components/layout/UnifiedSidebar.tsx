@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
 const CFO_NAV = [
+  { href: "/copilot",       label: "AI Copilot",          icon: Sparkles },
   { href: "/dashboard",     label: "Executive Dashboard", icon: LayoutDashboard },
   { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
@@ -308,15 +309,15 @@ export function UnifiedSidebar({ userName = "Faizan", userRole = "CFO" }: Unifie
       {/* Footer */}
       <div className={cn("border-t border-[var(--border-default)] py-2 px-2 shrink-0")}>
         {[
-          { icon: Sparkles, label: "AI Copilot",     color: "text-[var(--color-ai-500)]" },
-          { icon: Bell,     label: "Notifications",  color: "" },
-          { icon: Settings, label: "Settings",       color: "" },
-        ].map(({ icon: Icon, label, color }) => (
-          <button key={label} title={collapsed ? label : undefined}
+          { href: "/copilot",       icon: Sparkles, label: "AI Copilot",    color: "text-[var(--color-ai-500)]" },
+          { href: "#notifications", icon: Bell,     label: "Notifications", color: "" },
+          { href: "/metadata/settings", icon: Settings, label: "Settings",  color: "" },
+        ].map(({ href, icon: Icon, label, color }) => (
+          <Link key={label} href={href} title={collapsed ? label : undefined}
             className={cn("flex items-center gap-3 w-full px-3 h-9 rounded-md text-xs font-medium transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-sunken)]", collapsed && "justify-center px-0")}>
             <Icon className={cn("w-4 h-4 shrink-0", color || "text-[var(--text-tertiary)]")} strokeWidth={1.5} />
             {!collapsed && label}
-          </button>
+          </Link>
         ))}
         <Link href="/api/auth/logout"
           title={collapsed ? "Sign out" : undefined}

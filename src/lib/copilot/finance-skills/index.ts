@@ -1,0 +1,35 @@
+// Registry of finance skills available to the Copilot.
+//
+// To add a new skill: import its export here and add to FINANCE_SKILLS.
+// Each skill is auto-exposed as a Copilot tool with input_schema and
+// description. The Copilot endpoint maps tool calls back to skill.execute().
+//
+// Future skills (Sprint I+): reconciliation, journal-entry, audit-support,
+// sox-testing, cash-flow-narrative, board-pack.
+
+import type { FinanceSkill } from "./types";
+import { financialStatementsSkill } from "./financial-statements";
+import { varianceAnalysisSkill }    from "./variance-analysis";
+import { closeManagementSkill }     from "./close-management";
+
+export const FINANCE_SKILLS: Record<string, FinanceSkill> = {
+  [financialStatementsSkill.name]: financialStatementsSkill,
+  [varianceAnalysisSkill.name]:    varianceAnalysisSkill,
+  [closeManagementSkill.name]:     closeManagementSkill,
+};
+
+/** Anthropic tool definitions auto-built from registry */
+export function skillsToToolDefs() {
+  return Object.values(FINANCE_SKILLS).map(s => ({
+    name: s.name,
+    description: s.description,
+    input_schema: s.inputSchema,
+  }));
+}
+
+/** Returns the skill if name matches a registered finance skill */
+export function findSkill(name: string): FinanceSkill | null {
+  return FINANCE_SKILLS[name] ?? null;
+}
+
+export type { FinanceSkill, FinanceSkillResult, FinanceSkillContext } from "./types";
