@@ -50,6 +50,7 @@ const INSIGHTS_NAV: Item[] = [
 const PLANNING_NAV: Item[] = [
   { href: "/workforce",     label: "Workforce Planning",  icon: Users },
   { href: "/forecasting",   label: "Forecasting",         icon: TrendingUp },
+  { href: "/forecasting/variance", label: "Forecast Variance",   icon: Scale },
   { href: "/budgeting",     label: "Budgeting",           icon: PieChart },
   { href: "/projects",      label: "Project Planning",    icon: Kanban },
   { href: "/rules",         label: "Calc Rules",          icon: Cpu },
