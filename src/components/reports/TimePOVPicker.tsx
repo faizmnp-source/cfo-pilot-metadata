@@ -24,11 +24,17 @@ interface Props {
   label?:   string;
 }
 
+// Classify a Time member code. Accepts BOTH naming conventions:
+//   year      : FY2026, 2026
+//   half      : FY2026H1, 2026H1
+//   quarter   : FY2026Q3, 2026Q3
+//   month     : 2026-04, 2026M04, M04-2026
 function classify(code: string): "year" | "half" | "quarter" | "month" | "other" {
-  if (/^FY\d{4}$/.test(code))        return "year";
-  if (/^FY\d{4}H[12]$/.test(code))   return "half";
-  if (/^FY\d{4}Q[1-4]$/.test(code))  return "quarter";
-  if (/^\d{4}-\d{2}$/.test(code))    return "month";
+  if (/^(FY)?\d{4}$/.test(code))                return "year";
+  if (/^(FY)?\d{4}H[12]$/i.test(code))          return "half";
+  if (/^(FY)?\d{4}Q[1-4]$/i.test(code))         return "quarter";
+  if (/^\d{4}[-_]?M?\d{1,2}$/i.test(code))      return "month";
+  if (/^M\d{1,2}[-_]?\d{4}$/i.test(code))       return "month";
   return "other";
 }
 function yearOf(code: string): string {

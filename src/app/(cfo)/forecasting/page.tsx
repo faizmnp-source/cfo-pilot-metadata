@@ -49,7 +49,8 @@ export default function ForecastingPage() {
       setAccounts(((a?.data?.data ?? []) as any[]).filter(m => m.isActive));
       setEntities(((e?.data?.data ?? []) as any[]).filter(m => m.isActive));
       setScenarios(((s?.data?.data ?? []) as any[]).filter(m => m.isActive));
-      setPeriods(((t?.data?.data ?? []) as any[]).filter(m => m.isActive && /^\d{4}-\d{2}$/.test(m.memberCode)).sort((x, y) => x.memberCode.localeCompare(y.memberCode)));
+      // Accept both 2026-01 and 2026M01 conventions for month-level Time members
+      setPeriods(((t?.data?.data ?? []) as any[]).filter(m => m.isActive && /^\d{4}[-_]?M?\d{1,2}$/i.test(m.memberCode)).sort((x, y) => x.memberCode.localeCompare(y.memberCode)));
     }).catch(e => setError(String(e)));
   }, []);
 

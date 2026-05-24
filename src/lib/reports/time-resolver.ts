@@ -53,21 +53,16 @@ export async function resolveTimeMembersToLeafMonths(
   // Anything left in frontier at max depth → treat as leaves (safety)
   for (const id of frontier) leaves.push(id);
 
-  // 4. Filter to MONTH-level only (members matching YYYY-MM)
-  // (in v1, leaves of the FY tree ARE months; this filter is defence-in-depth)
+  // 4. Filter to ACTIVE leaf members.
+  // (Trust the BFS — a member with no children IS a leaf, regardless of code format.
+  //  Period code conventions vary by tenant: 2026M01 vs 2026-01 vs Jan-2026 etc.)
   const monthMembers = await prisma.dimensionMember.findMany({
     where: { tenantId, id: { in: leaves }, isActive: true },
     select: { id: true, memberCode: true },
   });
-  const monthIds = monthMembers
-    .filter(m => /^\d{4}-\d{2}$/.test(m.memberCode))
-    .map(m => m.id);
-
-  // If user picked a leaf month directly, the BFS finds no edges → leaves=[root]
-  // and monthIds correctly includes just that month.
 
   return {
-    leafMonthIds: monthIds,
+    leafMonthIds: monthMembers.map(m => m.id),
     resolvedMember: { id: root.id, code: root.memberCode, name: root.memberName },
     depth,
   };

@@ -56,7 +56,8 @@ export default function WorkforcePositionPage() {
       const pos = (posR?.data?.data ?? []).find((p: any) => p.id === positionId);
       setPosition(pos ?? null);
       setEntities(((entR?.data?.data ?? []) as any[]).filter(e => e.isActive));
-      setPeriods(((timeR?.data?.data ?? []) as Period[]).filter(t => /^\d{4}-\d{2}$/.test(t.memberCode)).sort((a, b) => a.memberCode.localeCompare(b.memberCode)));
+      // Accept both 2026-01 and 2026M01 month conventions
+      setPeriods(((timeR?.data?.data ?? []) as Period[]).filter(t => /^\d{4}[-_]?M?\d{1,2}$/i.test(t.memberCode)).sort((a, b) => a.memberCode.localeCompare(b.memberCode)));
       if ((entR?.data?.data ?? []).length) setSelectedEntityId((entR?.data?.data ?? [])[0].id);
     } catch (e: any) { setError(e.message ?? String(e)); }
   })(); }, [positionId]);
