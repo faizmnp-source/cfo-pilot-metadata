@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { MetadataHeader } from "@/components/layout/MetadataHeader";
 import { Download, RefreshCw, Loader2, Sparkles } from "lucide-react";
+import { TimePOVPicker } from "./TimePOVPicker";
 
 type Member = { id: string; code: string; name: string };
 
@@ -36,11 +37,10 @@ async function fetchMembers(slug: string, limit = 500): Promise<Member[]> {
 export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad, loading, meta, totals, children }: ReportLayoutProps) {
   const [scenarios, setScenarios] = useState<Member[]>([]);
   const [entities,  setEntities]  = useState<Member[]>([]);
-  const [years,     setYears]     = useState<Member[]>([]);
 
   const [scenarioId, setScenarioId] = useState("");
   const [entityId,   setEntityId]   = useState("");
-  const [yearCode,   setYearCode]   = useState("");
+  const [yearCode,   setYearCode]   = useState("");      // now accepts ANY Time member (year/half/quarter/month)
 
   useEffect(() => {
     (async () => {
@@ -49,9 +49,9 @@ export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad,
       ]);
       setScenarios(scns);
       setEntities(ents);
-      setYears(all_times.filter(t => /^FY\d{4}$/.test(t.code)));
       if (scns[0]) setScenarioId(scns[0].id);
       if (ents[0]) setEntityId(ents[0].id);
+      // Default to most recent FY (matches previous behavior)
       const fy = all_times.find(t => /^FY\d{4}$/.test(t.code));
       if (fy) setYearCode(fy.code);
     })();
@@ -72,7 +72,7 @@ export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad,
           <div className="flex flex-wrap items-center gap-3">
             <Pov label="Scenario" value={scenarioId} options={scenarios} onChange={setScenarioId} />
             <Pov label="Entity"   value={entityId}   options={entities}  onChange={setEntityId} />
-            <Pov label="Year"     value={yearCode}   options={years}     onChange={setYearCode} useCode />
+            <TimePOVPicker value={yearCode} onChange={setYearCode} label="Period" />
             <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700">
               <Sparkles className="h-3 w-3" /> AI Narrative · soon
             </span>

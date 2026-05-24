@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CFOHeader } from "@/components/cfo/Header";
+import { TimePOVPicker } from "@/components/reports/TimePOVPicker";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, Legend,
@@ -204,11 +205,7 @@ export default function DashboardPage() {
                 {scenarios.filter(s => s.id !== scenarioId).map(s => <option key={s.id} value={s.id}>{s.code}</option>)}
               </select>
             </FilterChip>
-            <FilterChip label="Year" icon={Calendar}>
-              <select value={yearCode} onChange={e => setYearCode(e.target.value)} className="bg-transparent text-xs font-semibold outline-none cursor-pointer">
-                {years.map(y => <option key={y.id} value={y.code}>{y.code}</option>)}
-              </select>
-            </FilterChip>
+            <TimePOVPicker value={yearCode} onChange={setYearCode} label="Period" />
             <EntityMultiSelect entities={entities} selected={selectedEntityIds} onChange={setSelectedEntityIds} />
             {error && <span className="ml-auto text-xs text-rose-700">⚠ {error}</span>}
           </div>

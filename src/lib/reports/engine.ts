@@ -85,28 +85,12 @@ interface AccountMeta {
  *   BS accounts (Asset/Liab/Equity, LAST) → closing balance
  */
 export async function loadFactsForReport(input: ReportInput): Promise<LoadedFacts> {
-  // Resolve year → months
-  const timeDim = await prisma.dimension.findFirst({
-    where: { tenantId: input.tenantId, kind: "TIME" as any },
-    select: { id: true },
-  });
-  if (!timeDim) return { byAccount: new Map(), rowsRead: 0, monthIds: [] };
-
-  const yearMember = await prisma.dimensionMember.findFirst({
-    where: { tenantId: input.tenantId, dimensionId: timeDim.id, memberCode: input.yearCode },
-    select: { id: true },
-  });
-  if (!yearMember) return { byAccount: new Map(), rowsRead: 0, monthIds: [] };
-
-  const quarterEdges = await prisma.hierarchyEdge.findMany({
-    where: { tenantId: input.tenantId, parentMemberId: yearMember.id },
-    select: { childMemberId: true },
-  });
-  const monthEdges = await prisma.hierarchyEdge.findMany({
-    where: { tenantId: input.tenantId, parentMemberId: { in: quarterEdges.map(e => e.childMemberId) } },
-    select: { childMemberId: true },
-  });
-  const monthIds = monthEdges.map(e => e.childMemberId);
+  // Universal Time POV: resolve ANY Time member (year/half/quarter/month) → leaf months.
+  // Replaces the old 2-level year→quarter→month walk.
+  const { resolveTimeMembersToLeafMonths } = await import("./time-resolver");
+  const { leafMonthIds } = await resolveTimeMembersToLeafMonths(input.tenantId, input.yearCode);
+  if (leafMonthIds.length === 0) return { byAccount: new Map(), rowsRead: 0, monthIds: [] };
+  const monthIds = leafMonthIds;
 
   // Pull all fact rows + months for sort
   const months = await prisma.dimensionMember.findMany({
