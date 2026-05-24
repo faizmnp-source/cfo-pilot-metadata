@@ -163,6 +163,7 @@ model Tenant {
   jobRuns         JobRun[]
   copilotConvos   CopilotConversation[]
   snapshots       Snapshot[]
+  lineageNotes    LineageNote[]
 
   @@index([slug])
   @@map("tenants")
@@ -449,6 +450,15 @@ model FactRow {
   postedAt       DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Phase 1 — Trust & Lineage (additive, nullable, backward-compatible)
+  // calcRunId   → the CalcRuleRun that wrote this fact (NULL for manual/import)
+  // processRunId → the ProcessRun (consolidation/translation) that wrote it
+  // prevVersionId → optional explicit pointer back to the prior fact_row id
+  //                 (lets us reconstruct version chains without re-querying)
+  calcRunId      String?
+  processRunId   String?
+  prevVersionId  String?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Unique on full intersection + version flag — only one isCurrent=true row
@@ -458,7 +468,48 @@ model FactRow {
   @@index([tenantId, scenarioId, timeId, entityId])           // POV-scoped grid load
   @@index([tenantId, accountId, timeId])                       // account-history queries
   @@index([tenantId, postedAt])                                // recent-activity feed
+  @@index([tenantId, calcRunId])                               // Phase 1 — lineage drill
+  @@index([tenantId, processRunId])                            // Phase 1 — lineage drill
+  @@index([tenantId, loadBatchId])                             // Phase 1 — lineage drill
   @@map("fact_rows")
+}
+
+// ─── Phase 1 — Lineage Notes ──────────────────────────────────────
+// Free-text human notes attached to a fact intersection. Lets a finance
+// user say "adjusted manually after audit memo M-2026-04" without
+// changing the value itself. One row per (intersection, author).
+model LineageNote {
+  id          String   @id @default(uuid())
+  tenantId    String
+  // The full intersection — same shape as FactRow PK. NULL for any
+  // dimension means "applies to all members of that dim" (rare, but
+  // useful for "all entities for FY26 closed early" style notes).
+  scenarioId  String
+  timeId      String?
+  entityId    String?
+  accountId   String?
+  icpId       String?
+  ud1Id       String?
+  ud2Id       String?
+  ud3Id       String?
+  ud4Id       String?
+  ud5Id       String?
+  ud6Id       String?
+  ud7Id       String?
+  ud8Id       String?
+
+  note        String   @db.Text
+  category    String   @default("MANUAL")   // MANUAL | AUDIT | CALC_OVERRIDE | EXPLANATION
+  authorId    String                         // user.id
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isArchived  Boolean  @default(false)
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, scenarioId, timeId, entityId, accountId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("lineage_notes")
 }
 
 // ─── Data Forms (admin-defined input/review forms) ────────────────

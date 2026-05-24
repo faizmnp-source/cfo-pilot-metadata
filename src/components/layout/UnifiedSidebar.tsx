@@ -61,7 +61,7 @@ const REPORTS_NAV: Item[] = [
 const META_NAV_BOTTOM: Item[] = [
   { href: "/metadata/import",      label: "Import Wizard",        icon: Upload },
   { href: "/metadata/validation",  label: "Validation",           icon: ShieldCheck },
-  { href: "/metadata/audit-logs",  label: "Audit Logs",           icon: History },
+  { href: "/audit",                label: "Audit Trail",          icon: History },
   { href: "/metadata/dimensions",  label: "Configure Dimensions", icon: Settings2 },
 ];
 
