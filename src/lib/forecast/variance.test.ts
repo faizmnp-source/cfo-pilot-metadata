@@ -1,4 +1,11 @@
-import { computeVarianceRows, computeVarianceTotals } from "./variance";
+import {
+  computeVarianceRows,
+  computeVarianceTotals,
+  classifyFavorability,
+  applyFavorability,
+  computeFavorabilityTotals,
+  type AccountTypeForFav,
+} from "./variance";
 
 describe("computeVarianceRows", () => {
   test("joins on (acc|ent|time) and emits variance + variance%", () => {
@@ -110,5 +117,154 @@ describe("computeVarianceTotals", () => {
     const t = computeVarianceTotals(rows);
     expect(t.forecast).toBe(0);
     expect(t.variancePct).toBeNull();
+  });
+});
+
+// Sprint W.3 — account-type-aware favorability
+describe("classifyFavorability", () => {
+  test("REVENUE: positive variance = favorable (beat plan)", () => {
+    expect(classifyFavorability("REVENUE", 50)).toBe("favorable");
+  });
+
+  test("REVENUE: negative variance = unfavorable (missed plan)", () => {
+    expect(classifyFavorability("REVENUE", -50)).toBe("unfavorable");
+  });
+
+  test("EXPENSE: positive variance = unfavorable (overspent)", () => {
+    expect(classifyFavorability("EXPENSE", 50)).toBe("unfavorable");
+  });
+
+  test("EXPENSE: negative variance = favorable (came in under budget)", () => {
+    expect(classifyFavorability("EXPENSE", -50)).toBe("favorable");
+  });
+
+  test("ASSET / LIABILITY / EQUITY: always neutral, regardless of sign", () => {
+    expect(classifyFavorability("ASSET", 50)).toBe("neutral");
+    expect(classifyFavorability("LIABILITY", -50)).toBe("neutral");
+    expect(classifyFavorability("EQUITY", 25)).toBe("neutral");
+  });
+
+  test("null / undefined account type: neutral", () => {
+    expect(classifyFavorability(null, 50)).toBe("neutral");
+    expect(classifyFavorability(undefined, 50)).toBe("neutral");
+  });
+
+  test("variance within epsilon: flat regardless of account type", () => {
+    expect(classifyFavorability("REVENUE", 0)).toBe("flat");
+    expect(classifyFavorability("EXPENSE", 0)).toBe("flat");
+    expect(classifyFavorability(null, 0)).toBe("flat");
+    expect(classifyFavorability("REVENUE", 1e-9)).toBe("flat");
+  });
+});
+
+describe("applyFavorability", () => {
+  test("tags each row with favorability + accountType using the lookup map", () => {
+    const baseRows = computeVarianceRows(
+      [
+        { accountId: "REV1", entityId: "E1", timeId: "T1", value: 110 }, // beat
+        { accountId: "EXP1", entityId: "E1", timeId: "T1", value: 130 }, // overspent
+        { accountId: "BS1",  entityId: "E1", timeId: "T1", value: 500 }, // balance sheet
+      ],
+      [
+        { accountId: "REV1", entityId: "E1", timeId: "T1", value: 100 },
+        { accountId: "EXP1", entityId: "E1", timeId: "T1", value: 100 },
+        { accountId: "BS1",  entityId: "E1", timeId: "T1", value: 450 },
+      ],
+    );
+    const typeMap = new Map<string, AccountTypeForFav | null>([
+      ["REV1", "REVENUE"],
+      ["EXP1", "EXPENSE"],
+      ["BS1",  "ASSET"],
+    ]);
+    const tagged = applyFavorability(baseRows, typeMap);
+
+    const rev = tagged.find(r => r.accountId === "REV1")!;
+    const exp = tagged.find(r => r.accountId === "EXP1")!;
+    const bs  = tagged.find(r => r.accountId === "BS1")!;
+
+    expect(rev.favorability).toBe("favorable");
+    expect(rev.accountType).toBe("REVENUE");
+    expect(exp.favorability).toBe("unfavorable");
+    expect(exp.accountType).toBe("EXPENSE");
+    expect(bs.favorability).toBe("neutral");
+    expect(bs.accountType).toBe("ASSET");
+  });
+
+  test("accounts missing from the typeMap are tagged neutral (or flat if variance ~0)", () => {
+    const baseRows = computeVarianceRows(
+      [
+        { accountId: "UNKNOWN1", entityId: "E", timeId: "T", value: 50 },
+        { accountId: "UNKNOWN2", entityId: "E", timeId: "T", value: 100 },
+      ],
+      [
+        { accountId: "UNKNOWN1", entityId: "E", timeId: "T", value: 30 },
+        { accountId: "UNKNOWN2", entityId: "E", timeId: "T", value: 100 },
+      ],
+    );
+    const tagged = applyFavorability(baseRows, new Map());
+    const u1 = tagged.find(r => r.accountId === "UNKNOWN1")!;
+    const u2 = tagged.find(r => r.accountId === "UNKNOWN2")!;
+    expect(u1.favorability).toBe("neutral");
+    expect(u1.accountType).toBeNull();
+    expect(u2.favorability).toBe("flat");
+    expect(u2.accountType).toBeNull();
+  });
+
+  test("does not mutate the input row array", () => {
+    const baseRows = computeVarianceRows(
+      [{ accountId: "REV1", entityId: "E1", timeId: "T1", value: 110 }],
+      [{ accountId: "REV1", entityId: "E1", timeId: "T1", value: 100 }],
+    );
+    const before = JSON.stringify(baseRows);
+    applyFavorability(baseRows, new Map([["REV1", "REVENUE"]]));
+    expect(JSON.stringify(baseRows)).toBe(before);
+  });
+});
+
+describe("computeFavorabilityTotals", () => {
+  test("counts buckets and computes net favorable impact", () => {
+    const baseRows = computeVarianceRows(
+      [
+        { accountId: "REV1", entityId: "E1", timeId: "T1", value: 150 }, // +50 favorable
+        { accountId: "EXP1", entityId: "E1", timeId: "T1", value: 140 }, // +40 unfavorable
+        { accountId: "BS1",  entityId: "E1", timeId: "T1", value: 500 }, // neutral
+        { accountId: "REV2", entityId: "E1", timeId: "T1", value: 100 }, // flat
+      ],
+      [
+        { accountId: "REV1", entityId: "E1", timeId: "T1", value: 100 },
+        { accountId: "EXP1", entityId: "E1", timeId: "T1", value: 100 },
+        { accountId: "BS1",  entityId: "E1", timeId: "T1", value: 450 },
+        { accountId: "REV2", entityId: "E1", timeId: "T1", value: 100 },
+      ],
+    );
+    const tagged = applyFavorability(
+      baseRows,
+      new Map<string, AccountTypeForFav | null>([
+        ["REV1", "REVENUE"],
+        ["REV2", "REVENUE"],
+        ["EXP1", "EXPENSE"],
+        ["BS1",  "ASSET"],
+      ]),
+    );
+    const t = computeFavorabilityTotals(tagged);
+    expect(t.favorable).toBe(1);
+    expect(t.unfavorable).toBe(1);
+    expect(t.flat).toBe(1);
+    expect(t.neutral).toBe(1);
+    // |50| from favorable revenue minus |40| from unfavorable expense = +10 net favorable
+    expect(t.netFavorableImpact).toBeCloseTo(10, 6);
+  });
+
+  test("rows without favorability tags are counted as neutral", () => {
+    const rows = computeVarianceRows(
+      [{ accountId: "A", entityId: "E", timeId: "T", value: 5 }],
+      [{ accountId: "A", entityId: "E", timeId: "T", value: 0 }],
+    );
+    // no applyFavorability — rows are untagged
+    const t = computeFavorabilityTotals(rows);
+    expect(t.neutral).toBe(1);
+    expect(t.favorable).toBe(0);
+    expect(t.unfavorable).toBe(0);
+    expect(t.netFavorableImpact).toBe(0);
   });
 });

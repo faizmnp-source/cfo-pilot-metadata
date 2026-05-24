@@ -7,28 +7,56 @@
 // write facts.
 
 import { useEffect, useMemo, useState } from "react";
-import { Scale, Loader2, Play, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Scale, Loader2, Play, AlertCircle, TrendingUp, TrendingDown, Minus, ThumbsUp, ThumbsDown, Circle } from "lucide-react";
 import { TimePOVPicker } from "@/components/reports/TimePOVPicker";
 import { HierarchyMemberPicker } from "@/components/pickers/HierarchyMemberPicker";
 
 type Member = { id: string; memberCode: string; memberName: string; isActive?: boolean };
+type Favorability = "favorable" | "unfavorable" | "flat" | "neutral";
+type AccountType = "REVENUE" | "EXPENSE" | "ASSET" | "LIABILITY" | "EQUITY" | null;
 type VarianceRow = {
   accountId: string; entityId: string; timeId: string;
   actual: number; forecast: number; variance: number; variancePct: number | null;
   direction: "pos" | "neg" | "flat";
+  // Sprint W.3 — account-type-aware favorability
+  favorability?: Favorability;
+  accountType?: AccountType;
   accountCode?: string; accountName?: string;
   entityCode?: string;  entityName?: string;
   periodCode?: string;  periodName?: string;
+};
+type FavorabilityTotals = {
+  favorable: number;
+  unfavorable: number;
+  flat: number;
+  neutral: number;
+  netFavorableImpact: number;
 };
 type VarianceResult = {
   actualScenarioCode: string;
   forecastScenarioCode: string;
   rows: VarianceRow[];
   totals: { actual: number; forecast: number; variance: number; variancePct: number | null; rowCount: number };
+  favorabilityTotals?: FavorabilityTotals;
   periodCount: number;
   accountCount: number;
   entityCount: number;
 };
+
+// Favorability → tailwind text-color class. Used in two places below.
+function favoColorClass(f: Favorability | undefined): string {
+  if (f === "favorable")   return "text-emerald-700";
+  if (f === "unfavorable") return "text-rose-700";
+  return "text-stone-500"; // flat / neutral
+}
+
+// Favorability → label for the variance tooltip / column meaning.
+function favoLabel(f: Favorability | undefined): string {
+  if (f === "favorable")   return "Favorable";
+  if (f === "unfavorable") return "Unfavorable";
+  if (f === "flat")        return "On plan";
+  return "Neutral";
+}
 
 export default function ForecastVariancePage() {
   const [accounts,  setAccounts]  = useState<Member[]>([]);
@@ -197,42 +225,78 @@ export default function ForecastVariancePage() {
               </div>
             </section>
 
+            {/* Sprint W.3 — Favorability summary strip. Only renders if API returned it. */}
+            {result.favorabilityTotals && (
+              <section className="bg-white rounded-lg border border-stone-200 p-5 mb-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide">3. Favorability (account-type aware)</h2>
+                  <p className="text-[10px] text-stone-400 italic">REVENUE beat = favorable · EXPENSE overshoot = unfavorable · Balance-sheet = neutral</p>
+                </div>
+                <div className="grid grid-cols-5 gap-3">
+                  <KPI label="Favorable"   value={String(result.favorabilityTotals.favorable)}   sub="rows beat plan in a good way" tone="pos" />
+                  <KPI label="Unfavorable" value={String(result.favorabilityTotals.unfavorable)} sub="rows missed plan in a bad way" tone="neg" />
+                  <KPI label="On plan"     value={String(result.favorabilityTotals.flat)}        sub="rows within epsilon" />
+                  <KPI label="Neutral"     value={String(result.favorabilityTotals.neutral)}     sub="balance-sheet / unknown type" />
+                  <KPI
+                    label="Net Favorable Impact"
+                    value={fmt(result.favorabilityTotals.netFavorableImpact)}
+                    sub={result.favorabilityTotals.netFavorableImpact >= 0 ? "Beats > misses" : "Misses > beats"}
+                    tone={result.favorabilityTotals.netFavorableImpact > 0 ? "pos" : result.favorabilityTotals.netFavorableImpact < 0 ? "neg" : "flat"}
+                  />
+                </div>
+              </section>
+            )}
+
             <section className="bg-white rounded-lg border border-stone-200 p-5">
-              <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-3">3. Per-row breakdown ({sortedRows.length})</h2>
+              <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-3">4. Per-row breakdown ({sortedRows.length})</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-[10px] uppercase font-bold text-stone-500 tracking-wide border-b border-stone-200">
                       <Th onClick={() => toggleSort("accountCode")} active={sortKey === "accountCode"} dir={sortDir}>Account</Th>
+                      <th className="px-2 py-2">Type</th>
                       <th className="px-2 py-2">Entity</th>
                       <Th onClick={() => toggleSort("periodCode")} active={sortKey === "periodCode"} dir={sortDir}>Period</Th>
                       <th className="px-2 py-2 text-right">Actual</th>
                       <th className="px-2 py-2 text-right">Forecast</th>
                       <Th onClick={() => toggleSort("variance")}    active={sortKey === "variance"}    dir={sortDir} alignRight>Variance</Th>
                       <Th onClick={() => toggleSort("variancePct")} active={sortKey === "variancePct"} dir={sortDir} alignRight>Variance %</Th>
+                      <th className="px-2 py-2">Favorability</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows.map((r, i) => (
-                      <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
-                        <td className="px-2 py-1.5 font-mono text-[11px]">{r.accountCode ?? r.accountId.slice(0,8)}</td>
-                        <td className="px-2 py-1.5 font-mono text-[11px]">{r.entityCode  ?? r.entityId.slice(0,8)}</td>
-                        <td className="px-2 py-1.5 font-mono text-[11px]">{r.periodCode  ?? r.timeId.slice(0,8)}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{fmt(r.actual)}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{fmt(r.forecast)}</td>
-                        <td className={`px-2 py-1.5 text-right font-mono ${r.direction === "pos" ? "text-emerald-700" : r.direction === "neg" ? "text-rose-700" : "text-stone-500"}`}>
-                          <span className="inline-flex items-center gap-1 justify-end">
-                            {r.direction === "pos" ? <TrendingUp className="w-3 h-3" /> : r.direction === "neg" ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                            {fmt(r.variance)}
-                          </span>
-                        </td>
-                        <td className={`px-2 py-1.5 text-right font-mono ${r.direction === "pos" ? "text-emerald-700" : r.direction === "neg" ? "text-rose-700" : "text-stone-500"}`}>
-                          {r.variancePct == null ? "—" : `${r.variancePct.toFixed(1)}%`}
-                        </td>
-                      </tr>
-                    ))}
+                    {sortedRows.map((r, i) => {
+                      // Sprint W.3 — variance/% colors driven by favorability (not raw sign)
+                      // so REVENUE beat is green and EXPENSE overshoot is red, both right.
+                      // Falls back to direction-based coloring if favorability missing.
+                      const varColor = r.favorability
+                        ? favoColorClass(r.favorability)
+                        : (r.direction === "pos" ? "text-emerald-700" : r.direction === "neg" ? "text-rose-700" : "text-stone-500");
+                      return (
+                        <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
+                          <td className="px-2 py-1.5 font-mono text-[11px]">{r.accountCode ?? r.accountId.slice(0,8)}</td>
+                          <td className="px-2 py-1.5 text-[10px] text-stone-500 uppercase tracking-wide">{r.accountType ?? "—"}</td>
+                          <td className="px-2 py-1.5 font-mono text-[11px]">{r.entityCode  ?? r.entityId.slice(0,8)}</td>
+                          <td className="px-2 py-1.5 font-mono text-[11px]">{r.periodCode  ?? r.timeId.slice(0,8)}</td>
+                          <td className="px-2 py-1.5 text-right font-mono">{fmt(r.actual)}</td>
+                          <td className="px-2 py-1.5 text-right font-mono">{fmt(r.forecast)}</td>
+                          <td className={`px-2 py-1.5 text-right font-mono ${varColor}`} title={favoLabel(r.favorability)}>
+                            <span className="inline-flex items-center gap-1 justify-end">
+                              {r.direction === "pos" ? <TrendingUp className="w-3 h-3" /> : r.direction === "neg" ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                              {fmt(r.variance)}
+                            </span>
+                          </td>
+                          <td className={`px-2 py-1.5 text-right font-mono ${varColor}`}>
+                            {r.variancePct == null ? "—" : `${r.variancePct.toFixed(1)}%`}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <FavorabilityBadge favorability={r.favorability} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {sortedRows.length === 0 && (
-                      <tr><td colSpan={7} className="px-2 py-6 text-center text-stone-400 italic">No facts found in the chosen intersection.</td></tr>
+                      <tr><td colSpan={9} className="px-2 py-6 text-center text-stone-400 italic">No facts found in the chosen intersection.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -269,6 +333,39 @@ function fmt(n: number): string {
   if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
   return n.toFixed(0);
+}
+
+function FavorabilityBadge({ favorability }: { favorability?: Favorability }) {
+  if (!favorability) {
+    return <span className="text-[10px] text-stone-400 italic">—</span>;
+  }
+  if (favorability === "favorable") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide font-semibold bg-emerald-50 text-emerald-700">
+        <ThumbsUp className="w-3 h-3" /> Favorable
+      </span>
+    );
+  }
+  if (favorability === "unfavorable") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide font-semibold bg-rose-50 text-rose-700">
+        <ThumbsDown className="w-3 h-3" /> Unfavorable
+      </span>
+    );
+  }
+  if (favorability === "flat") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide font-semibold bg-stone-100 text-stone-600">
+        <Minus className="w-3 h-3" /> On plan
+      </span>
+    );
+  }
+  // neutral
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide font-semibold bg-stone-50 text-stone-500">
+      <Circle className="w-3 h-3" /> Neutral
+    </span>
+  );
 }
 
 function PickerMulti({ label, items, selected, onChange, placeholder }: { label: string; items: { id: string; label: string }[]; selected: string[]; onChange: (s: string[]) => void; placeholder?: string }) {
