@@ -11,11 +11,15 @@ import type { FinanceSkill } from "./types";
 import { financialStatementsSkill } from "./financial-statements";
 import { varianceAnalysisSkill }    from "./variance-analysis";
 import { closeManagementSkill }     from "./close-management";
+import { reconciliationSkill }      from "./reconciliation";
+import { journalEntrySkill }        from "./journal-entry";
 
 export const FINANCE_SKILLS: Record<string, FinanceSkill> = {
   [financialStatementsSkill.name]: financialStatementsSkill,
   [varianceAnalysisSkill.name]:    varianceAnalysisSkill,
   [closeManagementSkill.name]:     closeManagementSkill,
+  [reconciliationSkill.name]:      reconciliationSkill,
+  [journalEntrySkill.name]:        journalEntrySkill,
 };
 
 /** Anthropic tool definitions auto-built from registry */
