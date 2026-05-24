@@ -13,6 +13,7 @@ import { useState, useEffect } from "react";
 
 const CFO_NAV = [
   { href: "/copilot",       label: "AI Copilot",          icon: Sparkles },
+  { href: "/rules",         label: "Calc Rules",          icon: Cpu },
   { href: "/dashboard",     label: "Executive Dashboard", icon: LayoutDashboard },
   { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
