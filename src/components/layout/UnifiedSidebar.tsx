@@ -6,13 +6,14 @@ import {
   FileText, Table2, Sparkles, Bell, Settings, ChevronLeft, ChevronRight,
   Navigation, BookOpen, Building2, GitBranch, Layers, Upload, ShieldCheck,
   History, LogOut, DollarSign, Globe, Clock, Link2, FolderKanban, Settings2,
-  Pencil, FileSpreadsheet, Cpu, Receipt, Scale, TrendingDown,
+  Pencil, FileSpreadsheet, Cpu, Receipt, Scale, TrendingDown, Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
 const CFO_NAV = [
   { href: "/dashboard",     label: "Executive Dashboard", icon: LayoutDashboard },
+  { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
   { href: "/budgeting",     label: "Budgeting",           icon: PieChart },
   { href: "/forecasting",   label: "Forecasting",         icon: TrendingUp },
