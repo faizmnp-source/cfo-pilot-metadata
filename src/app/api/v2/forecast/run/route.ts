@@ -1,18 +1,23 @@
 // POST /api/v2/forecast/run
 //
 // Build a forecast for a given account × entity × scenario, applying one of
-// 3 methods (run-rate / growth % / linear trend) over history → future facts.
+// 4 methods (run-rate / growth % / linear trend / seasonal trend) over
+// history → future facts.
 //
 // Body:
 //   { accountIds: string[],
 //     entityIds:  string[],
 //     historyScenarioCode: string,    // e.g. 'ACTUAL' to learn from
 //     targetScenarioCode:  string,    // e.g. 'FORECAST' to write to
-//     historyPeriods: string[],       // e.g. ["2026-01", ..., "2026-06"]
-//     futurePeriods:  string[],       // e.g. ["2026-07", ..., "2026-12"]
-//     method: 'RUN_RATE' | 'GROWTH_PCT' | 'LINEAR_TREND',
-//     params: { basisN?: number, pct?: number },
+//     historyPeriods: string[],       // e.g. ["2026M01", ..., "2026M06"] (or "2026-01")
+//     futurePeriods:  string[],       // e.g. ["2026M07", ..., "2026M12"]
+//     method: 'RUN_RATE' | 'GROWTH_PCT' | 'LINEAR_TREND' | 'SEASONAL_TREND',
+//     params: { basisN?: number, pct?: number, seasonLength?: number },
 //     overwriteExisting?: boolean }
+//
+// For SEASONAL_TREND, the route derives `seasonStart` automatically from the
+// first historyPeriod code (e.g. "2026M03" → seasonStart=2 so calendar slot 0
+// is January). seasonLength defaults to 12 (monthly seasonality).
 //
 // Returns: { method, accountCount, entityCount, periodCount, rowsRead, rowsWritten, sample[] }
 
@@ -20,7 +25,20 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { apiError, apiResponse } from "@/lib/utils";
-import { applyForecastMethod } from "@/lib/forecast/methods";
+import { applyForecastMethod, type ForecastMethodName } from "@/lib/forecast/methods";
+
+/**
+ * Extract the 0-indexed month-of-year from a period code.
+ * Supports `2026M03` (tenant convention) and `2026-03` (legacy).
+ * Returns 0 (Jan) when no parse — caller should treat as best-effort default.
+ */
+function monthIndexFromCode(code: string | undefined): number {
+  if (!code) return 0;
+  const m = code.match(/M(\d{1,2})$/i) ?? code.match(/[-_](\d{1,2})$/);
+  if (!m) return 0;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) ? Math.max(0, Math.min(11, n - 1)) : 0;
+}
 
 export async function POST(req: NextRequest) {
   const authResult = await requireAuth(req);
@@ -53,9 +71,19 @@ export async function POST(req: NextRequest) {
   if (!accountIds.length || !entityIds.length || !historyPeriods.length || !futurePeriods.length) {
     return apiError("accountIds, entityIds + (historyPeriods OR historyTimeCode) + (futurePeriods OR futureTimeCode) required", 400);
   }
-  const method = String(body.method ?? "RUN_RATE") as any;
-  const params = body.params ?? {};
+  const method = String(body.method ?? "RUN_RATE") as ForecastMethodName;
+  const params = { ...(body.params ?? {}) };
   const overwrite = !!body.overwriteExisting;
+
+  // For SEASONAL_TREND, auto-derive seasonStart from the first historyPeriod
+  // code unless the caller passed one explicitly. This lines up seasonal
+  // slot 0 with January regardless of when history starts.
+  if (method === "SEASONAL_TREND" && params.seasonStart == null) {
+    params.seasonStart = monthIndexFromCode(historyPeriods[0]);
+  }
+  if (method === "SEASONAL_TREND" && params.seasonLength == null) {
+    params.seasonLength = 12;
+  }
 
   // Resolve scenario codes → ids
   const [historyScn, targetScn] = await Promise.all([

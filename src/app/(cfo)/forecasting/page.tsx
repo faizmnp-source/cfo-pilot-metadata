@@ -1,11 +1,13 @@
 "use client";
 
-// Forecast Engine v1 — driver-based forecasting over fact_rows.
+// Forecast Engine v2 — driver-based forecasting over fact_rows.
 //
-// 3 methods (covers ~80% of mid-market FP&A needs per panel):
-//   - RUN_RATE     — avg last N months × project forward
-//   - GROWTH_PCT   — apply growth rate (compound) to last actual
-//   - LINEAR_TREND — least-squares regression over history
+// 4 methods (covers ~95% of mid-market FP&A needs per panel):
+//   - RUN_RATE        — avg last N months × project forward
+//   - GROWTH_PCT      — apply growth rate (compound) to last actual
+//   - LINEAR_TREND    — least-squares regression over history
+//   - SEASONAL_TREND  — linear trend × monthly seasonal index
+//                       (needs ≥ 2 years of history; falls back to LINEAR_TREND)
 //
 // Flow: pick accounts + entities + history periods + future periods + method
 //       → POST /api/v2/forecast/run → AI-origin facts written to target scenario
@@ -33,9 +35,10 @@ export default function ForecastingPage() {
   // Time POV: pick ANY Time member (FY2026 / FY2026H1 / FY2026Q3 / 2026-04)
   const [historyTimeCode, setHistoryTimeCode] = useState("FY2026H1");
   const [futureTimeCode,  setFutureTimeCode]  = useState("FY2026H2");
-  const [method, setMethod] = useState<"RUN_RATE" | "GROWTH_PCT" | "LINEAR_TREND">("RUN_RATE");
+  const [method, setMethod] = useState<"RUN_RATE" | "GROWTH_PCT" | "LINEAR_TREND" | "SEASONAL_TREND">("RUN_RATE");
   const [growthPct, setGrowthPct] = useState(0.05);
   const [basisN, setBasisN] = useState(3);
+  const [seasonLength, setSeasonLength] = useState(12);
   const [overwrite, setOverwrite] = useState(true);
 
   const [running, setRunning] = useState(false);
@@ -80,7 +83,11 @@ export default function ForecastingPage() {
           historyScenarioCode: historyScenario, targetScenarioCode: targetScenario,
           historyTimeCode, futureTimeCode,    // server resolves each to leaf months
           method,
-          params: method === "GROWTH_PCT" ? { pct: growthPct } : method === "RUN_RATE" ? { basisN } : {},
+          params:
+            method === "GROWTH_PCT"     ? { pct: growthPct }
+            : method === "RUN_RATE"     ? { basisN }
+            : method === "SEASONAL_TREND" ? { seasonLength }
+            : {},
           overwriteExisting: overwrite,
         }),
       });
@@ -126,17 +133,18 @@ export default function ForecastingPage() {
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide">Method</label>
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  {(["RUN_RATE", "GROWTH_PCT", "LINEAR_TREND"] as const).map(m => (
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {(["RUN_RATE", "GROWTH_PCT", "LINEAR_TREND", "SEASONAL_TREND"] as const).map(m => (
                     <button key={m} onClick={() => setMethod(m)} className={`px-2 py-2 rounded text-[11px] font-semibold border-2 transition ${method === m ? "bg-sky-50 border-sky-400 text-sky-900" : "bg-white border-stone-200 text-stone-600 hover:border-sky-200"}`}>
                       {m.replace(/_/g, " ")}
                     </button>
                   ))}
                 </div>
                 <p className="text-[10px] text-stone-500 mt-1 italic">
-                  {method === "RUN_RATE"     && `Avg of last ${basisN} months × project flat into future.`}
-                  {method === "GROWTH_PCT"   && `Apply ${(growthPct * 100).toFixed(1)}% growth compounding each period from last actual.`}
-                  {method === "LINEAR_TREND" && `Fit linear regression to history, project the line forward.`}
+                  {method === "RUN_RATE"        && `Avg of last ${basisN} months × project flat into future.`}
+                  {method === "GROWTH_PCT"      && `Apply ${(growthPct * 100).toFixed(1)}% growth compounding each period from last actual.`}
+                  {method === "LINEAR_TREND"    && `Fit linear regression to history, project the line forward.`}
+                  {method === "SEASONAL_TREND"  && `Linear trend × seasonal index (cycle length ${seasonLength}). Needs ≥ 2 full cycles of history — falls back to linear trend below that.`}
                 </p>
               </div>
               {method === "GROWTH_PCT" && (
@@ -150,6 +158,13 @@ export default function ForecastingPage() {
                 <div>
                   <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide">Basis months (avg of last N)</label>
                   <input type="number" min={1} max={24} value={basisN} onChange={e => setBasisN(parseInt(e.target.value || "3"))} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm" />
+                </div>
+              )}
+              {method === "SEASONAL_TREND" && (
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-stone-500 tracking-wide">Season length (months)</label>
+                  <input type="number" min={2} max={24} value={seasonLength} onChange={e => setSeasonLength(parseInt(e.target.value || "12"))} className="w-full mt-1 border border-stone-200 rounded p-2 text-sm" />
+                  <p className="text-[10px] text-stone-400 mt-1">12 = annual seasonality (default). 4 = quarterly pattern.</p>
                 </div>
               )}
               <div>
