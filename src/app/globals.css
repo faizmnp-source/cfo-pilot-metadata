@@ -87,3 +87,28 @@
   background-size: 200%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* ─── DESIGN-B · PULSE · global theme ───────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root {
+  --p-bg:        #f6f5f2;
+  --p-bg-2:      #ffffff;
+  --p-line:      #ebe9e3;
+  --p-ink:       #0d0c0a;
+  --p-ink-3:     #80766a;
+  --p-violet:    #5a3fff;
+  --p-violet-2:  #8b75ff;
+  --p-violet-soft: #ece7ff;
+  --p-emerald:   #1e7e57;
+  --p-rose:      #c83a5e;
+  --p-shadow:    0 1px 0 rgba(13,12,10,.04), 0 10px 30px -16px rgba(13,12,10,.16);
+  --font-pulse:        'Geist', -apple-system, system-ui, sans-serif;
+  --font-pulse-serif:  'Instrument Serif', Georgia, serif;
+}
+body.pulse-theme { background: var(--p-bg); color: var(--p-ink); font-family: var(--font-pulse); }
+.pulse-serif { font-family: var(--font-pulse-serif); }
+.pulse-glass { background: var(--p-bg-2); border: 1px solid var(--p-line); border-radius: 20px; box-shadow: var(--p-shadow); }
+.pulse-hero-dark { background: linear-gradient(135deg, #0d0c0a 0%, #1a1812 100%); border-radius: 24px; color: white; }
+.pulse-num { font-weight: 600; letter-spacing: -0.04em; }
+.pulse-accent { background: var(--p-violet-soft); color: var(--p-violet); }
