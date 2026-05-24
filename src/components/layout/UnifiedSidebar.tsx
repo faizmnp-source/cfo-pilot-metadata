@@ -56,6 +56,7 @@ const REPORTS_NAV: Item[] = [
   { href: "/reports/balance-sheet",    label: "Balance Sheet",       icon: Scale },
   { href: "/reports/trial-balance",    label: "Trial Balance",       icon: Receipt },
   { href: "/reports/cash-flow",        label: "Cash Flow",           icon: BookOpen },
+  { href: "/reporting",                label: "Board Pack",          icon: Sparkles },
 ];
 const META_NAV_BOTTOM: Item[] = [
   { href: "/metadata/import",      label: "Import Wizard",        icon: Upload },
