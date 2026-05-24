@@ -29,6 +29,8 @@ const DEFAULT_TTL_HOURS: Record<string, number> = {
   "balance-narrative":  24,
   "board-pack":      24 * 7,
   "classify":     24 * 30,
+  // close-summary changes throughout the day → keep stale-after-1h
+  "close-summary":       1,
   "default":            12,
 };
 

@@ -12,6 +12,7 @@ import {
   CheckCircle2, Circle, Clock, AlertCircle, MinusCircle,
   Lock, Unlock, RefreshCw, Calendar,
 } from "lucide-react";
+import { AiCloseSummaryPanel } from "@/components/close/AiCloseSummaryPanel";
 
 type CloseTask = {
   id: string;
@@ -335,6 +336,11 @@ export default function MonthlyClosePage() {
           </div>
 
           <div className="space-y-4">
+            <AiCloseSummaryPanel
+              closeRun={closeRun ? { id: closeRun.id, periodCode: closeRun.periodCode, status: closeRun.status } : null}
+              tasks={tasks.map(t => ({ title: t.title, status: t.status, dayOffset: t.dayOffset, category: t.category, owner: t.owner }))}
+              stats={stats}
+            />
             <div className="bg-white rounded-xl border border-[var(--border-default)] p-5">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Close Progress</h3>
               <div className="flex justify-center mb-4">

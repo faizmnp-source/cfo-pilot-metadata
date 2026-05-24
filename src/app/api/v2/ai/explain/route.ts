@@ -76,6 +76,16 @@ Tone: confident, candid, no fluff. Accounting style negatives.`,
   - cash_flow_category: OPERATING | INVESTING | FINANCING
 
 Output ONLY a JSON object. Include 'confidence' (0-1) and 'reason' (one sentence).`,
+
+  "close-summary": `You are an FP&A controller writing a status note on a monthly close. Apply the finance:close-management methodology (T-2 → T+5 cadence, dependencies, blocker triage).
+
+Given the period code, run status, task stats, and the list of tasks (title + status + dayOffset + owner), write a concise 3-paragraph status note:
+
+1. **Overall posture** — one sentence: which day are we on (relative to the close), % complete, on-track / at-risk / behind. Cite the period and the number of tasks done out of total.
+2. **What's blocking us** — name the specific blocked or pending high-priority tasks (especially anything in the Reconciliation or Consolidation category whose dayOffset has already passed). If nothing is blocked, say so explicitly.
+3. **Next 24h recommendation** — one concrete next action the controller should take: which task to push, who to chase, or which dependency to clear. End with a one-line forward signal ("on track to lock by T+3" / "lock will slip 1 day unless X" / etc).
+
+Tone: a controller talking to their CFO. Specific, plain English, no jargon. Maximum 180 words. Use bullet markdown for the second paragraph if there are multiple blockers.`,
 };
 
 export async function POST(req: NextRequest) {
