@@ -44,7 +44,7 @@ export async function executeRule(
     if (f.periodCodes?.length) {
       // Period filter via Time member code lookup
       const periods = await prisma.dimensionMember.findMany({
-        where: { tenantId: ctx.tenantId, kind: "TIME", memberCode: { in: f.periodCodes }},
+        where: { tenantId: ctx.tenantId, dimension: { kind: "TIME" }, memberCode: { in: f.periodCodes }},
         select: { id: true },
       });
       where.timeId = { in: periods.map(p => p.id) };
@@ -53,7 +53,7 @@ export async function executeRule(
     // Account-type prefix filter (e.g. "4" for all revenue accounts)
     if (f.accountTypePrefix) {
       const accounts = await prisma.dimensionMember.findMany({
-        where: { tenantId: ctx.tenantId, kind: "ACCOUNT", memberCode: { startsWith: f.accountTypePrefix }},
+        where: { tenantId: ctx.tenantId, dimension: { kind: "ACCOUNT" }, memberCode: { startsWith: f.accountTypePrefix }},
         select: { id: true },
       });
       where.accountId = where.accountId
@@ -72,14 +72,14 @@ export async function executeRule(
     const outputScenarioId = await resolveOutputScenarioId(spec.output, ctx.tenantId);
 
     const origin = await prisma.dimensionMember.findFirst({
-      where: { tenantId: ctx.tenantId, kind: "ORIGIN", memberCode: spec.output.origin },
+      where: { tenantId: ctx.tenantId, dimension: { kind: "ORIGIN" }, memberCode: spec.output.origin },
       select: { id: true },
     });
     if (!origin) throw new Error(`Origin '${spec.output.origin}' not seeded — run /api/__reset/origins`);
 
     const toWrite: any[] = [];
     for (const src of sourceFacts) {
-      const newValue = applyFormula(spec.formula, Number(src.value));
+      const newValue = applyFormula(spec.formula, Number(src.valueReporting));
       if (newValue === null) continue;
 
       toWrite.push({
@@ -93,10 +93,12 @@ export async function executeRule(
         ud1Id:        src.ud1Id, ud2Id: src.ud2Id, ud3Id: src.ud3Id, ud4Id: src.ud4Id,
         ud5Id:        src.ud5Id, ud6Id: src.ud6Id, ud7Id: src.ud7Id, ud8Id: src.ud8Id,
         originId:     origin.id,
-        value:        newValue,
-        valueReporting: newValue,   // assume same ccy; FX_CONVERT specialises
-        sourceRef:    `calc_rule:${ruleId}:run:${run.id}`,
-        version:      1,
+        valueTxn:       newValue,
+        valueLocal:     newValue,
+        valueReporting: newValue,   // assume same ccy; FX_CONVERT specialises later
+        version:        1,
+        isCurrent:      true,
+        postedBy:       ctx.triggeredBy,
       });
     }
 
@@ -108,7 +110,7 @@ export async function executeRule(
       if (f.entityIds?.length)   delWhere.entityId = { in: f.entityIds };
       if (f.periodCodes?.length) {
         const periods = await prisma.dimensionMember.findMany({
-          where: { tenantId: ctx.tenantId, kind: "TIME", memberCode: { in: f.periodCodes }},
+          where: { tenantId: ctx.tenantId, dimension: { kind: "TIME" }, memberCode: { in: f.periodCodes }},
           select: { id: true },
         });
         delWhere.timeId = { in: periods.map(p => p.id) };
@@ -186,7 +188,7 @@ async function resolveOutputAccountId(out: RuleSpec["output"], tenantId: string)
   if (out.accountId) return out.accountId;
   if (out.accountCode) {
     const m = await prisma.dimensionMember.findFirst({
-      where: { tenantId, kind: "ACCOUNT", memberCode: out.accountCode },
+      where: { tenantId, dimension: { kind: "ACCOUNT" }, memberCode: out.accountCode },
       select: { id: true },
     });
     return m?.id ?? null;
@@ -198,7 +200,7 @@ async function resolveOutputScenarioId(out: RuleSpec["output"], tenantId: string
   if (out.scenarioId) return out.scenarioId;
   if (out.scenarioCode) {
     const m = await prisma.dimensionMember.findFirst({
-      where: { tenantId, kind: "SCENARIO", memberCode: out.scenarioCode },
+      where: { tenantId, dimension: { kind: "SCENARIO" }, memberCode: out.scenarioCode },
       select: { id: true },
     });
     return m?.id ?? null;
