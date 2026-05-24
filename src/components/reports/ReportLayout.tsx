@@ -17,6 +17,7 @@ interface ReportLayoutProps {
   title:      string;
   subtitle?:  string;
   reportKind: "trial-balance" | "income-statement" | "balance-sheet" | "cash-flow";
+  ccy?:       string;
   onLoad?:    (params: { scenarioId: string; entityId: string; yearCode: string }) => void;
   loading?:   boolean;
   meta?:      { generatedAt: string; rowsRead: number; entity?: string; scenario?: string; year?: string };
@@ -32,7 +33,7 @@ async function fetchMembers(slug: string, limit = 500): Promise<Member[]> {
     .map((m: any) => ({ id: m.id, code: m.memberCode, name: m.memberName }));
 }
 
-export function ReportLayout({ title, subtitle, reportKind, onLoad, loading, meta, totals, children }: ReportLayoutProps) {
+export function ReportLayout({ title, subtitle, reportKind, ccy = "USD", onLoad, loading, meta, totals, children }: ReportLayoutProps) {
   const [scenarios, setScenarios] = useState<Member[]>([]);
   const [entities,  setEntities]  = useState<Member[]>([]);
   const [years,     setYears]     = useState<Member[]>([]);
@@ -95,7 +96,7 @@ export function ReportLayout({ title, subtitle, reportKind, onLoad, loading, met
               <div>
                 <h1 className="text-xl font-semibold text-stone-900 tracking-tight">{title}</h1>
                 <p className="text-[11px] text-stone-500 mt-1">
-                  {meta ? `${meta.entity ?? entityId.slice(0,8)} · ${meta.scenario ?? scenarioId.slice(0,8)} · ${meta.year ?? yearCode} · Reporting Currency` : "Loading…"}
+                  {meta ? `${meta.entity ?? entityId.slice(0,8)} · ${meta.scenario ?? scenarioId.slice(0,8)} · ${meta.year ?? yearCode} · in ${ccy}` : "Loading…"}
                 </p>
               </div>
               {meta && (
@@ -116,11 +117,11 @@ export function ReportLayout({ title, subtitle, reportKind, onLoad, loading, met
             <div className="px-8 py-6">{children}</div>
           )}
 
-          {/* Footer totals */}
+          {/* Footer totals — bigger, bolder, signed */}
           {totals && !loading && (
-            <div className="px-8 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
-              <span className="text-sm font-semibold text-stone-900">{totals.label}</span>
-              <span className="text-xl font-mono font-bold tabular-nums text-stone-900">{formatMoney(totals.value)}</span>
+            <div className={`px-8 py-5 border-t-2 ${totals.value < 0 ? "bg-rose-50 border-rose-200" : "bg-stone-900 border-stone-900"} flex items-center justify-between`}>
+              <span className={`text-sm font-bold uppercase tracking-wider ${totals.value < 0 ? "text-rose-900" : "text-white"}`}>{totals.label}</span>
+              <span className={`text-2xl font-mono font-extrabold tabular-nums ${totals.value < 0 ? "text-rose-700" : "text-white"}`}>{formatMoney(totals.value, { ccy })}</span>
             </div>
           )}
         </div>
@@ -149,10 +150,31 @@ function Pov({ label, value, options, onChange, useCode }: { label: string; valu
   );
 }
 
-export function formatMoney(n: number): string {
-  if (n === 0) return "—";
+// Currency symbols by ISO. Falls back to ISO code for anything not listed.
+const CCY_SYMBOL: Record<string, string> = {
+  USD: "$", GBP: "£", EUR: "€", INR: "₹", AED: "د.إ",
+  JPY: "¥", CNY: "¥", CHF: "Fr", AUD: "A$", CAD: "C$",
+};
+
+/**
+ * Money formatting for reports.
+ *   - Negatives shown in parentheses (accounting style): (1,234)
+ *   - Zero shows as em-dash for cleaner sparse tables
+ *   - Compact mode (M/B suffix) for large numbers in dashboard cards
+ *   - Currency symbol prefix when ccy is provided
+ */
+export function formatMoney(n: number, opts: { ccy?: string; compact?: boolean } = {}): string {
+  if (n === 0 || !Number.isFinite(n)) return "—";
+  const symbol = opts.ccy ? (CCY_SYMBOL[opts.ccy] ?? opts.ccy + " ") : "";
   const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  // Indian-locale grouping (lakh/crore) feels native to a CFO Pilot user
-  return sign + abs.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  let body: string;
+  if (opts.compact) {
+    if (abs >= 1_000_000_000) body = (abs / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 0 : 1) + "B";
+    else if (abs >= 1_000_000) body = (abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1) + "M";
+    else if (abs >= 1_000)     body = (abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1) + "K";
+    else                       body = abs.toFixed(0);
+  } else {
+    body = abs.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  return n < 0 ? `(${symbol}${body})` : `${symbol}${body}`;
 }

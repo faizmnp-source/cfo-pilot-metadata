@@ -15,6 +15,9 @@ export interface DashboardKpis {
   hasData: boolean;
   yearCode: string;
   entityName: string;
+  ccy: string;
+  // Monthly trend for the line chart
+  monthly: { code: string; revenue: number; expense: number; netIncome: number }[];
 }
 
 async function fetchMembers(slug: string): Promise<Member[]> {
@@ -37,7 +40,8 @@ export function useDashboardData() {
     ebitda:  { value: 0, delta: 0, trend: "neutral", sparkline: [] },
     cash:    { value: 0, delta: 0, trend: "neutral", sparkline: [] },
     burnRate:{ value: 0, delta: 0, trend: "neutral", sparkline: [] },
-    loaded: false, hasData: false, yearCode: "", entityName: "",
+    loaded: false, hasData: false, yearCode: "", entityName: "", ccy: "USD",
+    monthly: [],
   });
 
   useEffect(() => {
@@ -97,14 +101,28 @@ export function useDashboardData() {
         const ebitda    = netIncome;
         const hasData = revenue !== 0 || expense !== 0 || cash !== 0;
 
+        // Pull monthly trend for chart + sparklines
+        const targetEntityIds = grpReport ? [grpReport.ent.id] : reports.filter(r => r.ent.code !== "GRP" && r.hasFacts).map(r => r.ent.id);
+        const monthlyResp = targetEntityIds.length > 0
+          ? await fetch(`/api/v2/reports/monthly-trend?scenarioId=${scenarioId}&entityId=${targetEntityIds.join(",")}&yearCode=${yearMember.code}`, { credentials: "include" })
+              .then(r => r.json()).catch(() => null)
+          : null;
+        const monthly = (monthlyResp?.data?.months ?? []) as { code: string; revenue: number; expense: number; netIncome: number }[];
+
+        // Fetch reporting currency for symbol display
+        const settingsResp = await fetch("/api/settings", { credentials: "include" }).then(r => r.json()).catch(() => null);
+        const ccy = settingsResp?.data?.reportingCurrency ?? "USD";
+
         setData({
-          revenue:  { value: revenue,   delta: 0, trend: revenue   > 0 ? "up"   : "neutral", sparkline: [] },
-          ebitda:   { value: ebitda,    delta: 0, trend: ebitda    > 0 ? "up"   : "down",    sparkline: [] },
+          revenue:  { value: revenue,   delta: 0, trend: revenue   > 0 ? "up"   : "neutral", sparkline: monthly.map(m => m.revenue) },
+          ebitda:   { value: ebitda,    delta: 0, trend: ebitda    > 0 ? "up"   : "down",    sparkline: monthly.map(m => m.netIncome) },
           cash:     { value: cash,      delta: 0, trend: cash      > 0 ? "up"   : "neutral", sparkline: [] },
-          burnRate: { value: Math.abs(expense) / 12, delta: 0, trend: "up",                  sparkline: [] },
+          burnRate: { value: Math.abs(expense) / 12, delta: 0, trend: "up",                  sparkline: monthly.map(m => m.expense) },
           loaded: true, hasData,
           yearCode: yearMember.code,
           entityName,
+          ccy,
+          monthly,
         });
       } catch (e) {
         console.error("dashboard load failed:", e);

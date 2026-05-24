@@ -23,14 +23,13 @@ export default function DashboardPage() {
   const [copilotOpen, setCopilotOpen] = useState(false);
   const live = useDashboardData();
 
-  // Use live numbers when we have real data; fall back to the dummy preview
-  // until the tenant has loaded any facts. Sparklines / deltas stay dummy in
-  // v1 — those need historical time-series which we'll add in the next slice.
+  // Use live numbers when we have real data; fall back to dummy preview.
+  // Sparklines now come from monthly trend (revenue/expense/netIncome over 12 months).
   const kpiData = live.hasData ? {
-    revenue:  { ...dummyKpis.revenue,  value: live.revenue.value,  trend: live.revenue.trend  },
-    ebitda:   { ...dummyKpis.ebitda,   value: live.ebitda.value,   trend: live.ebitda.trend   },
-    cash:     { ...dummyKpis.cash,     value: live.cash.value,     trend: live.cash.trend     },
-    burnRate: { ...dummyKpis.burnRate, value: live.burnRate.value, trend: live.burnRate.trend },
+    revenue:  { ...dummyKpis.revenue,  value: live.revenue.value,  trend: live.revenue.trend,  sparkline: live.revenue.sparkline.length ? live.revenue.sparkline : dummyKpis.revenue.sparkline },
+    ebitda:   { ...dummyKpis.ebitda,   value: live.ebitda.value,   trend: live.ebitda.trend,   sparkline: live.ebitda.sparkline.length  ? live.ebitda.sparkline  : dummyKpis.ebitda.sparkline },
+    cash:     { ...dummyKpis.cash,     value: live.cash.value,     trend: live.cash.trend },
+    burnRate: { ...dummyKpis.burnRate, value: live.burnRate.value, trend: live.burnRate.trend, sparkline: live.burnRate.sparkline.length ? live.burnRate.sparkline : dummyKpis.burnRate.sparkline },
   } : dummyKpis;
 
   return (
@@ -70,14 +69,23 @@ export default function DashboardPage() {
             <div className="xl:col-span-2 bg-white rounded-xl border border-[var(--border-default)] p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">Revenue vs. Budget & Forecast</h2>
-                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Jul 2025 – Jun 2026 · Monthly</p>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">Revenue vs Expenses · Monthly Trend</h2>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                    {live.hasData ? `${live.entityName} · ${live.yearCode} · in ${live.ccy}` : "Jul 2025 – Jun 2026 · Monthly (sample)"}
+                  </p>
                 </div>
                 <button className="p-1.5 rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-surface-sunken)] transition-colors">
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <RevenueChart data={revenueChartData} />
+              <RevenueChart data={live.hasData && live.monthly.length > 0
+                ? live.monthly.map(m => ({
+                    month: m.code.slice(-3).replace("M0", "M"),     // "M01" → "M1"
+                    actual: m.revenue,
+                    budget: m.expense,
+                    forecast: m.netIncome,
+                  }))
+                : revenueChartData} />
             </div>
             <div className="bg-white rounded-xl border border-[var(--border-default)] p-5">
               <div className="flex items-center gap-2 mb-4">

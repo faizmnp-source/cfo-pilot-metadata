@@ -2,7 +2,7 @@
 
 // Shared report-detail page. Wires POV → API call → ReportLayout chrome + ReportBody.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ReportLayout } from "./ReportLayout";
 import { ReportBody } from "./ReportBody";
 
@@ -14,6 +14,15 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ccy, setCcy] = useState<string>("USD");
+
+  // Resolve tenant reporting currency once for display
+  useEffect(() => {
+    fetch("/api/settings", { credentials: "include" })
+      .then(r => r.json())
+      .then(j => { if (j?.data?.reportingCurrency) setCcy(j.data.reportingCurrency); })
+      .catch(() => {});
+  }, []);
 
   const onLoad = useCallback(async (p: { scenarioId: string; entityId: string; yearCode: string }) => {
     setLoading(true); setError(null);
@@ -36,6 +45,7 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
       title={title}
       subtitle={subtitle}
       reportKind={kind}
+      ccy={ccy}
       onLoad={onLoad}
       loading={loading}
       meta={data?.meta}
@@ -44,7 +54,7 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-xs text-red-800 mb-4">⚠ {error}</div>
       )}
-      {data?.sections && <ReportBody sections={data.sections} />}
+      {data?.sections && <ReportBody sections={data.sections} ccy={ccy} />}
     </ReportLayout>
   );
 }
