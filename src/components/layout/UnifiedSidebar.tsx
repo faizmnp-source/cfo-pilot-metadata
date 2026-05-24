@@ -18,7 +18,7 @@ import {
   BookOpen, GitBranch, Layers, Upload, ShieldCheck,
   History, LogOut, DollarSign, FolderKanban, Settings2,
   Pencil, FileSpreadsheet, Cpu, Receipt, Scale, TrendingDown, Rocket,
-  Zap, Clock,
+  Zap, Clock, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -69,6 +69,7 @@ const PROCESS_NAV: Item[] = [
   { href: "/process",                  label: "Overview",            icon: Clock },
   { href: "/process/consolidation",    label: "Consolidation",       icon: GitBranch },
   { href: "/process/fx-rates",         label: "FX Rates",            icon: DollarSign },
+  { href: "/snapshots",                label: "Snapshots & Backup",  icon: Camera },
 ];
 const REPORTS_NAV: Item[] = [
   { href: "/reports",                  label: "Overview",            icon: FileText },
