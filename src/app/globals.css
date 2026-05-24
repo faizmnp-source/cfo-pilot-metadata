@@ -87,3 +87,24 @@
   background-size: 200%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* ─── DESIGN-A · ATELIER · global theme ─────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f5efe2;
+  --paper-2: #ede5d2;
+  --rule: #d9cfb8;
+  --ink: #1a1612;
+  --ink-2: #3d362c;
+  --ink-3: #7a6e5c;
+  --accent: #7a2030;
+  --emerald-atelier: #1f5d4a;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-sans:  'Inter', -apple-system, system-ui, sans-serif;
+}
+body.atelier-theme { background: var(--paper); color: var(--ink); font-family: var(--font-sans); }
+.atelier-serif { font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.01em; }
+.atelier-eyebrow { font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+.atelier-card { background: var(--paper); border: 1px solid var(--rule); padding: 26px; }
+.atelier-neg { color: var(--accent); }
