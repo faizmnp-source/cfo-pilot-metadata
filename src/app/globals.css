@@ -108,3 +108,35 @@ body.atelier-theme { background: var(--paper); color: var(--ink); font-family: v
 .atelier-eyebrow { font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .atelier-card { background: var(--paper); border: 1px solid var(--rule); padding: 26px; }
 .atelier-neg { color: var(--accent); }
+
+/* ─── ATELIER · PAGE-LEVEL DEFAULTS ─────────────────────────────── */
+/* Every (cfo) page inherits cream paper + Inter UI from body class.
+   Headers, cards, badges get serif treatment by default. */
+
+body.atelier-theme { background: var(--paper); color: var(--ink); font-family: var(--font-sans); }
+
+/* Override Tailwind 'bg-white' / 'bg-stone-50' on pages so they sit on cream */
+body.atelier-theme .bg-white { background: var(--paper) !important; }
+body.atelier-theme .bg-stone-50, body.atelier-theme .bg-gray-50 { background: var(--paper-2) !important; }
+body.atelier-theme .bg-stone-100 { background: var(--paper-2) !important; }
+
+/* Headings on every page get Newsreader serif */
+body.atelier-theme h1, body.atelier-theme h2, body.atelier-theme h3 {
+  font-family: var(--font-serif) !important;
+  letter-spacing: -0.01em;
+}
+
+/* Borders soften to rule */
+body.atelier-theme .border-stone-200, body.atelier-theme .border-gray-200, body.atelier-theme .border-stone-100 {
+  border-color: var(--rule) !important;
+}
+
+/* Buttons: deep-ink primary, oxblood for destructive (already there via accent var) */
+body.atelier-theme .text-stone-900 { color: var(--ink) !important; }
+body.atelier-theme .text-stone-700, body.atelier-theme .text-stone-800 { color: var(--ink-2) !important; }
+body.atelier-theme .text-stone-500, body.atelier-theme .text-stone-600 { color: var(--ink-3) !important; }
+
+/* But /growth/* keeps its existing palette via body.no-atelier override */
+body.no-atelier { background: white; color: #0f172a; font-family: ui-sans-serif, system-ui, sans-serif; }
+body.no-atelier .bg-white { background: white !important; }
+body.no-atelier .bg-stone-50 { background: rgb(249 250 251) !important; }

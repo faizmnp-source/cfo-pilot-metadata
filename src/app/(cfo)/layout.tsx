@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { UnifiedSidebar } from "@/components/layout/UnifiedSidebar";
+import { AtelierBodyClass } from "@/components/layout/AtelierBodyClass";
 
 export default async function CfoLayout({ children }: { children: React.ReactNode }) {
   let userName = "User";
@@ -16,14 +17,14 @@ export default async function CfoLayout({ children }: { children: React.ReactNod
         userRole = payload.role ?? "CFO";
       }
     }
-  } catch { /* use defaults */ }
+  } catch { /* defaults */ }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-page)]">
+    <div className="flex h-screen overflow-hidden" style={{ background: "var(--paper, #f5efe2)" }}>
+      {/* Auto-toggles body.atelier-theme on every page, removes on /growth */}
+      <AtelierBodyClass />
       <UnifiedSidebar userName={userName} userRole={userRole} />
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        {children}
-      </div>
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">{children}</div>
     </div>
   );
 }
