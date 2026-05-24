@@ -145,6 +145,10 @@ model Tenant {
   fxRates         FxRate[]
   processRuns     ProcessRun[]
   loadBatches     LoadBatch[]
+  aiCacheEntries  AiCache[]
+  aiCallLogs      AiCallLog[]
+  closeRuns       CloseRun[]
+  closeTasks      CloseTask[]
 
   @@index([slug])
   @@map("tenants")
@@ -613,9 +617,115 @@ model LoadBatch {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// AI Cache + AI Call Logs — cost-discipline backbone.
+// Cache: hash(model + skill + payload) → response. Identical re-asks
+//        within TTL serve free.
+// Logs:  every AI call recorded for per-tenant cost tracking + daily cap.
+// ═══════════════════════════════════════════════════════════════════
+
+model AiCache {
+  id          String   @id @default(uuid())
+  tenantId    String
+  cacheKey    String                                // sha256(model + prompt + payload)
+  kind        String                                // 'variance' | 'narrative' | 'classify' | etc
+  model       String                                // 'haiku-4.5' | 'sonnet-4.6' | 'gemini-2.5-flash'
+  response    String                                // markdown or json
+  promptTokens Int
+  outputTokens Int
+  costInr      Decimal @db.Decimal(12, 4)           // estimated cost in INR
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  hitCount    Int      @default(0)                  // bumped each time served from cache
+  lastHitAt   DateTime?
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, cacheKey])
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, kind])
+  @@map("ai_cache")
+}
+
+model AiCallLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  userId      String
+  kind        String                                // surface name e.g. 'variance-explainer'
+  model       String
+  promptTokens Int
+  outputTokens Int
+  costInr     Decimal  @db.Decimal(12, 4)
+  cached      Boolean  @default(false)              // true when served from AiCache
+  latencyMs   Int
+  acceptedByUser Boolean?                            // null until user reacts
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, kind])
+  @@map("ai_call_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Monthly Close — checklist + status tracking
+// Templates seed the 5-day playbook from finance:close-management.
+// CloseRun = per-period instance. CloseTask = individual checkbox.
+// ═══════════════════════════════════════════════════════════════════
+
+model CloseRun {
+  id           String   @id @default(uuid())
+  tenantId     String
+  periodCode   String                                // e.g. "2026M04"
+  status       String   @default("OPEN")             // OPEN | LOCKED | REOPENED
+  startedAt    DateTime @default(now())
+  closedAt     DateTime?
+  createdBy    String
+  closedBy     String?
+  notes        String?
+
+  tasks        CloseTask[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodCode])
+  @@index([tenantId, status])
+  @@map("close_runs")
+}
+
+model CloseTask {
+  id           String   @id @default(uuid())
+  tenantId     String
+  closeRunId   String
+
+  dayOffset    Int                                   // -2..5 (T-2 pre-close → T+5 final)
+  category     String                                // RECONCILIATION | JOURNAL_ENTRIES | REVIEW | LOCK
+  title        String
+  description  String?
+
+  status       String   @default("PENDING")          // PENDING | IN_PROGRESS | DONE | BLOCKED | SKIPPED
+  owner        String?                               // user id
+  dueDate      DateTime?
+  completedAt  DateTime?
+  completedBy  String?
+  notes        String?
+
+  // Auto-detect completion: if any fact for this period has this origin, mark DONE
+  autoStatusOrigin String?                           // e.g. "Import"
+
+  sortOrder    Int      @default(0)
+  closeRun     CloseRun @relation(fields: [closeRunId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([closeRunId, dayOffset])
+  @@index([tenantId, status])
+  @@map("close_tasks")
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // WHAT'S INTENTIONALLY NOT IN THIS DRAFT (deferred per Faizan):
 //   - mapping rules (next slice — file-import path, post v1)
 //   - load_batch row-detail (raw rows, errors per row) — added when import scales
 //   - Postgres RLS policies (separate migration after schema lock)
-//   - AI cache table (separate slice with /api/v2/ai gateway)
+//   - Forecast engine schema additions — coming in Ship 4
+//   - Workforce (Position dim + Headcount fact) — coming in Ship 5
 // ═══════════════════════════════════════════════════════════════════
