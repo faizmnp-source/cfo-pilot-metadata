@@ -1,0 +1,23 @@
+{
+  "name": "@cfo-pilot/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server exposing CFO Pilot tenant data to Claude clients (Cowork, Claude Desktop, Claude Code)",
+  "type": "module",
+  "bin": {
+    "cfo-pilot-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "dev":   "tsx index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
