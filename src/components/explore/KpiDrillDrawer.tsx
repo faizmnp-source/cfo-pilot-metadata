@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { FactDetailDrawer } from "./FactDetailDrawer";
 
 type Contributor = {
   entityId: string; entityCode: string; entityName: string;
@@ -18,6 +19,7 @@ export function KpiDrillDrawer({
   currencySymbol?: string;
 }) {
   const [contribs, setContribs] = useState<Contributor[] | null>(null);
+  const [drillFact, setDrillFact] = useState<{ entityId: string; accountId: string; label: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -67,7 +69,7 @@ export function KpiDrillDrawer({
                 <span>Entity</span><span>Account</span><span style={{ textAlign: "right" }}>Value</span>
               </div>
               {contribs.map((c, i) => (
-                <div key={i} className="grid items-baseline py-2 border-b" style={{ gridTemplateColumns: "1.4fr 1.2fr auto", columnGap: 14, fontSize: 13, borderColor: "var(--rule)" }}>
+                <div key={i} onClick={() => c.accountId && setDrillFact({ entityId: c.entityId, accountId: c.accountId, label: `${c.entityName} · ${c.accountName}` })} className="grid items-baseline py-2 border-b transition-colors" style={{ gridTemplateColumns: "1.4fr 1.2fr auto", columnGap: 14, fontSize: 13, borderColor: "var(--rule)", cursor: c.accountId ? "pointer" : "default" }}>
                   <span className="atelier-serif">{c.entityName} <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--ink-3)" }}>{c.entityCode}</span></span>
                   <span className="atelier-serif" style={{ color: "var(--ink-2)" }}>{c.accountName} <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, color: "var(--ink-3)" }}>{c.accountCode}</span></span>
                   <span className="atelier-serif tnum" style={{ textAlign: "right", fontWeight: 500, color: c.value < 0 ? "var(--accent)" : "var(--ink)" }}>{fmt(c.value)}</span>
@@ -77,6 +79,18 @@ export function KpiDrillDrawer({
           )}
         </div>
       </aside>
+      {drillFact && (
+        <FactDetailDrawer
+          open={!!drillFact}
+          onClose={() => setDrillFact(null)}
+          label={drillFact.label}
+          scenarioId={povIds.scenarioId}
+          timeId={povIds.timeId}
+          entityId={drillFact.entityId}
+          accountId={drillFact.accountId}
+          currencySymbol={currencySymbol}
+        />
+      )}
     </>
   );
 }
