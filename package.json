@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
+    "seed:apple": "node prisma/seed-apple.mjs",
     "db:studio": "prisma studio",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
