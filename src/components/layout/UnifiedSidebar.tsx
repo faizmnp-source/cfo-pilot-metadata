@@ -38,6 +38,7 @@ const PLANNING_NAV: Item[] = [
   { href: "/automation",    label: "Automation",          icon: Zap },
   { href: "/jobs/library",  label: "Jobs Library",        icon: FileSpreadsheet },
   { href: "/allocations/library", label: "Allocations",     icon: GitBranch },
+  { href: "/automation/monitor",  label: "Automation Monitor", icon: Bell },
 ];
 const META_NAV_CORE: Item[] = [
   { href: "/metadata",         label: "Overview",          icon: Layers },

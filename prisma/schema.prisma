@@ -169,6 +169,7 @@ model Tenant {
   copilotActions  CopilotAction[]
   adhocViews      AdHocView[]
   entityOwnership EntityOwnership[]
+  jobDependencies JobDependency[]
 
   @@index([slug])
   @@map("tenants")
@@ -922,15 +923,17 @@ model AutomationJob {
 }
 
 model JobRun {
-  id           String   @id @default(uuid())
-  tenantId     String
-  jobId        String
-  status       String   @default("RUNNING")          // RUNNING | SUCCEEDED | FAILED
-  startedAt    DateTime @default(now())
-  finishedAt   DateTime?
-  triggeredBy  String                                // 'cron' | 'manual:<userId>'
-  output       Json?                                 // summary, file url, row counts, etc
-  errorMessage String?
+  id              String   @id @default(uuid())
+  tenantId        String
+  jobId           String
+  status          String   @default("RUNNING")       // RUNNING | SUCCEEDED | FAILED | RETRYING
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  triggeredBy     String                              // 'cron' | 'manual:<userId>' | 'retry:<userId>'
+  output          Json?
+  errorMessage    String?
+  retryCount      Int     @default(0)                 // Section 22 — incremented on each retry
+  retryBackoffMs  Int     @default(60000)             // Next retry waits at least this long
 
   job          AutomationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1165,6 +1168,27 @@ model EntityOwnership {
   @@index([tenantId, parentEntityId])
   @@index([tenantId, childEntityId])
   @@map("entity_ownership")
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Section 22 — Scheduler v2: dependencies + retry
+// JobDependency: job B starts only when job A's latest run = SUCCEEDED.
+// Cycle protection enforced in app layer.
+// ═══════════════════════════════════════════════════════════════════
+model JobDependency {
+  id              String   @id @default(uuid())
+  tenantId        String
+  jobId           String                              // the dependent job
+  dependsOnJobId  String                              // must succeed first
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, jobId, dependsOnJobId])
+  @@index([tenantId, jobId])
+  @@map("job_dependencies")
 }
 
 // ═══════════════════════════════════════════════════════════════════
