@@ -168,6 +168,7 @@ model Tenant {
   mappingLearning MappingLearning[]
   copilotActions  CopilotAction[]
   adhocViews      AdHocView[]
+  entityOwnership EntityOwnership[]
 
   @@index([slug])
   @@map("tenants")
@@ -1136,6 +1137,34 @@ model AdHocView {
   @@index([tenantId, ownerId, lastOpenedAt(sort: Desc)])
   @@index([tenantId, isShared])
   @@map("adhoc_views")
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Section 21 — Ownership & Equity (current-only)
+// One row per (parent, child) edge with a current pctOwned and a
+// consolidation method (FULL / PROPORTIONAL / EQUITY / NONE).
+// Effective-dated history is intentionally NOT here — Faizan's locked
+// decision in the gap analysis. Future migration can add validFrom/To.
+// ═══════════════════════════════════════════════════════════════════
+model EntityOwnership {
+  id              String  @id @default(uuid())
+  tenantId        String
+  parentEntityId  String
+  childEntityId   String
+  pctOwned        Decimal @db.Decimal(7, 4)            // 0.0000 .. 100.0000
+  method          ConsolidationMethod @default(FULL)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+
+  tenant          Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, parentEntityId, childEntityId])
+  @@index([tenantId, parentEntityId])
+  @@index([tenantId, childEntityId])
+  @@map("entity_ownership")
 }
 
 // ═══════════════════════════════════════════════════════════════════
