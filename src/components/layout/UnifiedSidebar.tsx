@@ -36,6 +36,7 @@ const PLANNING_NAV: Item[] = [
   { href: "/projects",      label: "Project Planning",    icon: Kanban },
   { href: "/rules",         label: "Calc Rules",          icon: Cpu },
   { href: "/automation",    label: "Automation",          icon: Zap },
+  { href: "/jobs/library",  label: "Jobs Library",        icon: FileSpreadsheet },
 ];
 const META_NAV_CORE: Item[] = [
   { href: "/metadata",         label: "Overview",          icon: Layers },
