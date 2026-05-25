@@ -7,6 +7,7 @@ import { ReportLayout, formatMoney } from "./ReportLayout";
 import { ReportBody } from "./ReportBody";
 import { MethodologyCard } from "./MethodologyCard";
 import { AiNarrativePanel } from "./AiNarrativePanel";
+import { FactDetailDrawer } from "@/components/explore/FactDetailDrawer";
 
 type Kind = "trial-balance" | "income-statement" | "balance-sheet" | "cash-flow";
 
@@ -17,6 +18,8 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ccy, setCcy] = useState<string>("USD");
+  const [povIds, setPovIds] = useState<{ scenarioId: string; entityId: string; yearCode: string; timeId: string | null }>({ scenarioId: "", entityId: "", yearCode: "", timeId: null });
+  const [drill, setDrill] = useState<{ accountId: string; label: string } | null>(null);
 
   // Resolve tenant reporting currency once for display
   useEffect(() => {
@@ -34,6 +37,15 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
       setData(j.data);
+
+      // Resolve yearCode → time member id for drill-through (best effort)
+      try {
+        const tm = await fetch(`/api/v2/members/time?search=${encodeURIComponent(p.yearCode)}&pageSize=5`, { credentials: "include" }).then(x => x.json());
+        const match = (tm?.data?.data ?? []).find((m: any) => m.memberCode === p.yearCode) ?? (tm?.data?.data ?? [])[0];
+        setPovIds({ ...p, timeId: match?.id ?? null });
+      } catch {
+        setPovIds({ ...p, timeId: null });
+      }
     } catch (e: any) {
       setError(e.message ?? String(e));
       setData(null);
@@ -67,7 +79,19 @@ export function ReportDetail({ kind, title, subtitle }: Props) {
         <KpiStripFromSections sections={data.sections} totals={data.totals} ccy={ccy} kind={kind} />
       )}
       {data && <AiNarrativePanel kind={kind} report={data} ccy={ccy} />}
-      {data?.sections && <ReportBody sections={data.sections} ccy={ccy} />}
+      {data?.sections && <ReportBody sections={data.sections} ccy={ccy} onDrillLine={(accountId, name) => setDrill({ accountId, label: name })} />}
+      {drill && (
+        <FactDetailDrawer
+          open={!!drill}
+          onClose={() => setDrill(null)}
+          label={drill.label}
+          scenarioId={povIds.scenarioId || null}
+          timeId={povIds.timeId}
+          entityId={povIds.entityId}
+          accountId={drill.accountId}
+          currencySymbol={ccy === "INR" ? "₹" : ccy === "USD" ? "$" : ccy + " "}
+        />
+      )}
     </ReportLayout>
   );
 }
