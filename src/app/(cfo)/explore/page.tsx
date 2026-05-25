@@ -17,6 +17,8 @@ import { useEffect, useState } from "react";
 import { UnifiedPovPicker } from "@/components/pov/UnifiedPovPicker";
 import { KpiDrillDrawer } from "@/components/explore/KpiDrillDrawer";
 import { LineageTrigger } from "@/components/lineage/LineageDrawer";
+import { RisksTile } from "@/components/dashboard/RisksTile";
+import { RecommendedActionsTile } from "@/components/dashboard/RecommendedActionsTile";
 import { resolvePov } from "@/lib/pov/resolve-client";
 import type { PovSpec } from "@/lib/pov/types";
 
@@ -164,6 +166,10 @@ export default function ExplorePage() {
             </p>
           </>
         )}
+      </div>
+      <div className="px-14 pb-9 grid gap-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <RisksTile />
+        <RecommendedActionsTile />
       </div>
       {drillKpi && (
         <KpiDrillDrawer
