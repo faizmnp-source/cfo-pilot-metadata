@@ -166,6 +166,7 @@ model Tenant {
   lineageNotes    LineageNote[]
   mappingRules    MappingRule[]
   mappingLearning MappingLearning[]
+  copilotActions  CopilotAction[]
 
   @@index([slug])
   @@map("tenants")
@@ -1073,6 +1074,40 @@ model MappingLearning {
 
   @@index([tenantId, kind, sourceKey, createdAt(sort: Desc)])
   @@map("mapping_learning")
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 6 — Copilot Action Framework
+// Every Copilot WRITE action (create entity, lock period, run consol)
+// gets a row here in PENDING_APPROVAL. Human approves → status changes
+// → executor picks it up. Audit log captures every step.
+// ═══════════════════════════════════════════════════════════════════
+
+model CopilotAction {
+  id              String   @id @default(uuid())
+  tenantId        String
+  conversationId  String?                          // optional link to chat
+  actionKind      String                            // CREATE_ENTITY | LOCK_PERIOD | RUN_CONSOL | ... (free-form, validated in code)
+  args            Json                              // kind-specific arg bag
+  proposedBy      String                            // user.id who triggered the AI
+  approvedBy      String?
+  rejectedBy      String?
+  rejectionReason String?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  executedAt      DateTime?
+  status          String   @default("PENDING_APPROVAL")  // PENDING_APPROVAL | APPROVED | REJECTED | EXECUTED | FAILED
+  executionResult Json?                             // returned data + audit info
+  executionError  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@index([tenantId, conversationId])
+  @@map("copilot_actions")
 }
 
 // ═══════════════════════════════════════════════════════════════════
