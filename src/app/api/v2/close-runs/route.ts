@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
             title:            t.title,
             description:      t.description,
             autoStatusOrigin: t.autoStatusOrigin ?? null,
+          screenTarget: t.screenTarget ?? null,
             sortOrder:        t.sortOrder,
           })),
         },

@@ -13,6 +13,7 @@ import {
   Lock, Unlock, RefreshCw, Calendar,
 } from "lucide-react";
 import { AiCloseSummaryPanel } from "@/components/close/AiCloseSummaryPanel";
+import Link from "next/link";
 
 type CloseTask = {
   id: string;
@@ -28,6 +29,7 @@ type CloseTask = {
   completedBy: string | null;
   notes: string | null;
   autoStatusOrigin: string | null;
+  screenTarget: string | null;
   sortOrder: number;
 };
 

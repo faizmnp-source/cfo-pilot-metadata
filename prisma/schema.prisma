@@ -779,6 +779,10 @@ model CloseTask {
   // Auto-detect completion: if any fact for this period has this origin, mark DONE
   autoStatusOrigin String?                           // e.g. "Import"
 
+  // Phase 3 — task → screen deep-link target (relative URL, e.g. "/process/consolidation")
+  // Null for tasks that are not directly actionable in-app (e.g. "Send email to BUs").
+  screenTarget String?
+
   sortOrder    Int      @default(0)
   closeRun     CloseRun @relation(fields: [closeRunId], references: [id], onDelete: Cascade)
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
