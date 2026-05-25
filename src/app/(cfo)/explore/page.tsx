@@ -15,6 +15,8 @@
  */
 import { useEffect, useState } from "react";
 import { UnifiedPovPicker } from "@/components/pov/UnifiedPovPicker";
+import { KpiDrillDrawer } from "@/components/explore/KpiDrillDrawer";
+import { LineageTrigger } from "@/components/lineage/LineageDrawer";
 import { resolvePov } from "@/lib/pov/resolve-client";
 import type { PovSpec } from "@/lib/pov/types";
 
@@ -39,6 +41,8 @@ export default function ExplorePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [unresolved, setUnresolved] = useState<string[]>([]);
+  const [drillKpi, setDrillKpi] = useState<{ key: "revenue"|"opex"|"netIncome"|"cash"|"grossProfit"; label: string } | null>(null);
+  const [povIds, setPovIds] = useState<{ scenarioId: string|null; timeId: string|null; entityIds: string[] }>({ scenarioId: null, timeId: null, entityIds: [] });
 
   useEffect(() => { document.body.classList.add("atelier-theme"); return () => { document.body.classList.remove("atelier-theme"); }; }, []);
 
@@ -48,6 +52,7 @@ export default function ExplorePage() {
     (async () => {
       try {
         const { ids, unresolved } = await resolvePov(pov);
+        setPovIds({ scenarioId: ids.scenarioId, timeId: ids.timeId, entityIds: ids.entityIds });
         setUnresolved(unresolved);
         if (!ids.scenarioId || !ids.timeId) { setError("Could not resolve scenario or period — check the codes above."); return; }
         const qs = new URLSearchParams({ scenarioId: ids.scenarioId, yearCode: pov.periodCode });
@@ -104,14 +109,19 @@ export default function ExplorePage() {
           <>
             <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: 0 }}>
               {[
-                { label: "Revenue",       v: data.kpis.revenue.value },
-                { label: "Gross Profit",  v: data.kpis.grossProfit.value },
-                { label: "OpEx",          v: data.kpis.opex.value },
-                { label: "Net Income",    v: data.kpis.netIncome.value },
-                { label: "Cash Position", v: data.kpis.cash.value },
+                { label: "Revenue",       v: data.kpis.revenue.value,     kpiKey: "revenue" as const },
+                { label: "Gross Profit",  v: data.kpis.grossProfit.value, kpiKey: "grossProfit" as const },
+                { label: "OpEx",          v: data.kpis.opex.value,        kpiKey: "opex" as const },
+                { label: "Net Income",    v: data.kpis.netIncome.value,   kpiKey: "netIncome" as const },
+                { label: "Cash Position", v: data.kpis.cash.value,        kpiKey: "cash" as const },
               ].map((k, i) => (
                 <div key={i} className="px-4 py-4 border-r" style={{ borderColor: "var(--rule)", borderRight: i === 4 ? "none" : undefined }}>
-                  <div className="atelier-eyebrow" style={{ fontSize: 10.5 }}>{k.label}</div>
+                  <div className="flex items-center gap-1">
+                    <div className="atelier-eyebrow" style={{ fontSize: 10.5 }}>{k.label}</div>
+                    {k.kpiKey && (
+                      <LineageTrigger onClick={() => setDrillKpi({ key: k.kpiKey as any, label: k.label })} title={`Drill into ${k.label}`} />
+                    )}
+                  </div>
                   <div className="atelier-serif tnum mt-1" style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.02em" }}>
                     {fmt(k.v)}
                   </div>
@@ -155,6 +165,16 @@ export default function ExplorePage() {
           </>
         )}
       </div>
+      {drillKpi && (
+        <KpiDrillDrawer
+          open={!!drillKpi}
+          onClose={() => setDrillKpi(null)}
+          kpiLabel={drillKpi.label}
+          kpi={drillKpi.key}
+          povIds={povIds}
+          currencySymbol="₹"
+        />
+      )}
     </main>
   );
 }
