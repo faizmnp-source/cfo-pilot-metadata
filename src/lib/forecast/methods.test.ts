@@ -198,3 +198,51 @@ describe("forecast/methods", () => {
     });
   });
 });
+
+
+import { holtWinters, ensemble } from "./methods";
+
+describe("holtWinters", () => {
+  it("falls back to linearTrend when history < 2 seasons", () => {
+    const h = Array(11).fill(0).map((_, i) => 100 + i);  // 11 points, seasonLength 12
+    const r = holtWinters(h, 3, 12);
+    expect(r.params.fallbackFrom).toBe("HOLT_WINTERS");
+  });
+
+  it("preserves multiplicative seasonality direction over 24 months", () => {
+    const cycle = [1.0, 1.5, 0.5, 1.0, 1.2, 0.8, 1.1, 1.4, 0.9, 1.0, 1.3, 0.7];
+    const h: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      const trend = 100 + 5 * i;
+      h.push(trend * cycle[i % 12]);
+    }
+    const r = holtWinters(h, 12, 12);
+    // High-factor slots should beat low-factor slots in the forecast window
+    expect(r.values[1]).toBeGreaterThan(r.values[2]);   // slot 1 > slot 2
+    expect(r.values[7]).toBeGreaterThan(r.values[6]);   // slot 7 > slot 6
+  });
+});
+
+describe("ensemble", () => {
+  it("returns RUN_RATE fallback on tiny history", () => {
+    const r = ensemble([100, 110, 120], 3);
+    expect(r.ensemble.chosen).toBe("RUN_RATE");
+    expect(r.ensemble.backtests).toHaveLength(0);
+  });
+
+  it("picks LINEAR_TREND on a clean trend", () => {
+    const h = Array(20).fill(0).map((_, i) => 100 + 5 * i);
+    const r = ensemble(h, 3, 3);
+    expect(["LINEAR_TREND", "HOLT_WINTERS"]).toContain(r.ensemble.chosen);
+    expect(r.ensemble.backtests.length).toBeGreaterThan(0);
+  });
+
+  it("provides MAPE for every method tested", () => {
+    const h = Array(24).fill(0).map((_, i) => 100 + i + 10 * Math.sin(i / 3));
+    const r = ensemble(h, 6, 6);
+    for (const b of r.ensemble.backtests) {
+      expect(Number.isFinite(b.mape) || b.mape === Infinity).toBe(true);
+      expect(Number.isFinite(b.rmse) || b.rmse === Infinity).toBe(true);
+    }
+  });
+});

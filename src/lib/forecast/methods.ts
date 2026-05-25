@@ -181,3 +181,169 @@ export function applyForecastMethod(
     default:               throw new Error(`Unknown forecast method: ${method}`);
   }
 }
+
+
+/* ─── Phase 4 — Holt-Winters (triple exponential smoothing) ─────────
+ * Multiplicative seasonal Holt-Winters. Pure JS, no deps.
+ * Inputs:
+ *   history       — observed series
+ *   futurePeriods — how many periods to forecast
+ *   seasonLength  — period of seasonality (12 for monthly w/ yearly cycle)
+ *   alpha / beta / gamma — smoothing parameters (0..1). Defaults chosen
+ *                          empirically: 0.4 / 0.1 / 0.3 work well for
+ *                          monthly financial data.
+ * Falls back to linearTrend if history < 2 full seasons.
+ */
+export function holtWinters(
+  history: number[],
+  futurePeriods: number,
+  seasonLength = 12,
+  alpha = 0.4,
+  beta = 0.1,
+  gamma = 0.3,
+): ForecastResult {
+  if (history.length < 2 * seasonLength) {
+    const r = linearTrend(history, futurePeriods);
+    r.params = { ...r.params, fallbackFrom: "HOLT_WINTERS", reason: "history < 2 seasons" };
+    return r;
+  }
+
+  const n = history.length;
+  // Initial level: mean of first season
+  let level = history.slice(0, seasonLength).reduce((a, b) => a + b, 0) / seasonLength;
+  // Initial trend: avg per-period delta between season 1 and season 2
+  let trend = 0;
+  for (let i = 0; i < seasonLength; i++) {
+    trend += (history[seasonLength + i] - history[i]) / seasonLength;
+  }
+  trend /= seasonLength;
+  // Initial seasonals: ratio of each first-season point to the mean (multiplicative)
+  const seasonals: number[] = [];
+  for (let i = 0; i < seasonLength; i++) {
+    seasonals.push(level === 0 ? 1 : history[i] / level);
+  }
+
+  // Update through the rest of history
+  for (let i = seasonLength; i < n; i++) {
+    const s = seasonals[i % seasonLength];
+    const prevLevel = level;
+    level = alpha * (s === 0 ? history[i] : history[i] / s) + (1 - alpha) * (level + trend);
+    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+    seasonals[i % seasonLength] = gamma * (level === 0 ? 1 : history[i] / level) + (1 - gamma) * s;
+  }
+
+  const values: number[] = [];
+  for (let k = 1; k <= futurePeriods; k++) {
+    const s = seasonals[(n + k - 1) % seasonLength];
+    values.push((level + k * trend) * s);
+  }
+
+  return {
+    method: "HOLT_WINTERS",
+    params: { alpha, beta, gamma, seasonLength, finalLevel: level, finalTrend: trend },
+    values,
+    basis: {
+      historyCount: n,
+      historyMean: history.reduce((a, b) => a + b, 0) / n,
+      historyLast: history[n - 1],
+    },
+  };
+}
+
+/* ─── Ensemble selector ────────────────────────────────────────────
+ * Backtest each method on a holdout of last `holdoutN` periods.
+ * Train on history[0..n-holdoutN], predict the holdout, compute MAPE.
+ * Pick the method with the lowest MAPE, then refit on full history.
+ */
+export type BacktestResult = {
+  method: string;
+  mape:   number;    // mean absolute percentage error (0..∞, lower = better)
+  rmse:   number;    // root mean squared error
+};
+
+export type EnsembleResult = ForecastResult & {
+  ensemble: {
+    chosen: string;
+    backtests: BacktestResult[];
+    holdoutN: number;
+    reason: string;
+  };
+};
+
+const ALL_METHODS = [
+  { name: "RUN_RATE",       fn: (h: number[], k: number) => runRate(h, k, 3) },
+  { name: "LINEAR_TREND",   fn: (h: number[], k: number) => linearTrend(h, k) },
+  { name: "SEASONAL_TREND", fn: (h: number[], k: number) => seasonalTrend(h, k, 12, 0) },
+  { name: "HOLT_WINTERS",   fn: (h: number[], k: number) => holtWinters(h, k, 12) },
+];
+
+function mape(actual: number[], predicted: number[]): number {
+  if (actual.length === 0) return Infinity;
+  let sum = 0; let n = 0;
+  for (let i = 0; i < actual.length; i++) {
+    if (actual[i] === 0) continue;
+    sum += Math.abs((actual[i] - predicted[i]) / actual[i]);
+    n++;
+  }
+  return n === 0 ? Infinity : (sum / n) * 100;
+}
+
+function rmse(actual: number[], predicted: number[]): number {
+  if (actual.length === 0) return Infinity;
+  let sum = 0;
+  for (let i = 0; i < actual.length; i++) {
+    const d = actual[i] - predicted[i];
+    sum += d * d;
+  }
+  return Math.sqrt(sum / actual.length);
+}
+
+export function ensemble(history: number[], futurePeriods: number, holdoutN = 3): EnsembleResult {
+  // Need enough history to leave a holdout and still train
+  if (history.length <= holdoutN + 3) {
+    const r = runRate(history, futurePeriods);
+    return {
+      ...r,
+      ensemble: {
+        chosen: "RUN_RATE",
+        backtests: [],
+        holdoutN,
+        reason: "Not enough history for backtest — fell back to run-rate",
+      },
+    };
+  }
+
+  const train  = history.slice(0, history.length - holdoutN);
+  const actual = history.slice(history.length - holdoutN);
+
+  const backtests: BacktestResult[] = [];
+  for (const m of ALL_METHODS) {
+    try {
+      const r = m.fn(train, holdoutN);
+      backtests.push({
+        method: r.method,                       // may be fallback method (e.g. HW → LINEAR_TREND)
+        mape: mape(actual, r.values),
+        rmse: rmse(actual, r.values),
+      });
+    } catch (e) {
+      backtests.push({ method: m.name, mape: Infinity, rmse: Infinity });
+    }
+  }
+
+  // Pick winner by lowest MAPE
+  const winner = backtests.reduce((best, b) => (b.mape < best.mape ? b : best), backtests[0]);
+  const winnerMethod = ALL_METHODS.find(m => m.name === winner.method || m.name === backtests[ALL_METHODS.findIndex(x => x.name === winner.method)]?.method) ?? ALL_METHODS[0];
+
+  // Refit winner on full history
+  const final = winnerMethod.fn(history, futurePeriods);
+
+  return {
+    ...final,
+    ensemble: {
+      chosen: winnerMethod.name,
+      backtests,
+      holdoutN,
+      reason: `Picked ${winnerMethod.name} (MAPE ${winner.mape.toFixed(1)}%) — best of ${backtests.length} backtested methods`,
+    },
+  };
+}
