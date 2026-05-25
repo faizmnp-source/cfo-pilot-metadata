@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-helpers";
 import { apiResponse } from "@/lib/utils";
+import { score } from "@/lib/search/score";
 
 type Result = { kind: string; title: string; subtitle?: string; href: string; score: number };
 
@@ -33,19 +34,6 @@ const STATIC_ROUTES: Array<Omit<Result, "score">> = [
   { kind: "Report", title: "Board Pack",        href: "/reporting" },
 ];
 
-function score(q: string, title: string): number {
-  q = q.toLowerCase().trim(); const t = title.toLowerCase();
-  if (!q) return 0;
-  if (t === q) return 100;
-  if (t.startsWith(q)) return 90;
-  if (t.includes(q)) return 70;
-  // Token overlap
-  const qt = new Set(q.split(/\s+/));
-  const tt = new Set(t.split(/\s+/));
-  let hits = 0;
-  Array.from(qt).forEach(t1 => { if (tt.has(t1)) hits++; });
-  return hits === 0 ? 0 : 40 + hits * 10;
-}
 
 export async function GET(req: NextRequest) {
   const a = await requireAuth(req);
