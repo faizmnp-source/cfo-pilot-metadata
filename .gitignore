@@ -13,3 +13,10 @@ uploads/
 
 .vercel
 tsconfig.tsbuildinfo
+
+# Python bytecode (modal-services/forecasting/)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python

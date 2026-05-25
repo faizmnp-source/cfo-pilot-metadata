@@ -13,6 +13,7 @@ import {
   Lock, Unlock, RefreshCw, Calendar,
 } from "lucide-react";
 import { AiCloseSummaryPanel } from "@/components/close/AiCloseSummaryPanel";
+import Link from "next/link";
 
 type CloseTask = {
   id: string;
@@ -28,6 +29,7 @@ type CloseTask = {
   completedBy: string | null;
   notes: string | null;
   autoStatusOrigin: string | null;
+  screenTarget: string | null;
   sortOrder: number;
 };
 
@@ -311,6 +313,12 @@ export default function MonthlyClosePage() {
                               {task.autoStatusOrigin && ` · auto: ${task.autoStatusOrigin}`}
                             </p>
                           </div>
+                          {task.screenTarget && (
+                            <Link href={task.screenTarget} title={`Go to ${task.screenTarget}`}
+                              className="shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[var(--border-default)] text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-sunken)] transition-colors">
+                              Go to screen <span style={{fontSize:10}}>→</span>
+                            </Link>
+                          )}
                           <div className="flex items-center gap-2 shrink-0">
                             <CFOBadge variant={cfg.badge}>{cfg.label}</CFOBadge>
                             {!locked && (

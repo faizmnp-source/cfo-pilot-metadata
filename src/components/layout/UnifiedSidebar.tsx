@@ -23,6 +23,9 @@ const HERO_NAV: Item[] = [
 ];
 const INSIGHTS_NAV: Item[] = [
   { href: "/dashboard",     label: "Executive Brief",     icon: LayoutDashboard },
+  { href: "/explore",       label: "Explorer",            icon: PieChart },
+  { href: "/analyze",       label: "Analyze (Ad Hoc)",    icon: Layers },
+  { href: "/analytics",     label: "Visual Analytics",    icon: TrendingUp },
   { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
 ];
@@ -33,6 +36,9 @@ const PLANNING_NAV: Item[] = [
   { href: "/projects",      label: "Project Planning",    icon: Kanban },
   { href: "/rules",         label: "Calc Rules",          icon: Cpu },
   { href: "/automation",    label: "Automation",          icon: Zap },
+  { href: "/jobs/library",  label: "Jobs Library",        icon: FileSpreadsheet },
+  { href: "/allocations/library", label: "Allocations",     icon: GitBranch },
+  { href: "/automation/monitor",  label: "Automation Monitor", icon: Bell },
 ];
 const META_NAV_CORE: Item[] = [
   { href: "/metadata",         label: "Overview",          icon: Layers },
@@ -60,8 +66,9 @@ const REPORTS_NAV: Item[] = [
 ];
 const META_NAV_BOTTOM: Item[] = [
   { href: "/metadata/import",      label: "Import Wizard",        icon: Upload },
+  { href: "/mapping",              label: "Mapping Library",      icon: ShieldCheck },
   { href: "/metadata/validation",  label: "Validation",           icon: ShieldCheck },
-  { href: "/metadata/audit-logs",  label: "Audit Logs",           icon: History },
+  { href: "/audit",                label: "Audit Trail",          icon: History },
   { href: "/metadata/dimensions",  label: "Configure Dimensions", icon: Settings2 },
 ];
 

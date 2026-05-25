@@ -10,6 +10,7 @@ export type DefaultCloseTask = {
   title: string;
   description: string;
   autoStatusOrigin?: string;     // If any FactRow with this origin posts to the period, auto-mark DONE
+  screenTarget?: string;         // Phase 3 — relative URL to jump to (e.g. "/process/consolidation")
   sortOrder: number;
 };
 
@@ -19,6 +20,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: -2,
     category: "RECONCILIATION",
     title: "Notify business units of cut-off",
+    screenTarget: "/copilot",
     description: "Send the calendar to all BU controllers. Last day to load actuals = T-1 5pm.",
     sortOrder: 10,
   },
@@ -27,6 +29,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: -1,
     category: "RECONCILIATION",
     title: "Bank reconciliations (all GL cash accounts)",
+    screenTarget: "/data/load",
     description: "Match GL cash balance to bank statement for every entity. Flag reconciling items > materiality.",
     sortOrder: 20,
   },
@@ -34,6 +37,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: -1,
     category: "RECONCILIATION",
     title: "Accounts Payable cut-off",
+    screenTarget: "/data/load",
     description: "Close AP for the period. Any invoice dated ≤ period-end goes in; later → next period.",
     sortOrder: 30,
   },
@@ -42,6 +46,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 0,
     category: "JOURNAL_ENTRIES",
     title: "Post AR / AP / payroll accruals",
+    screenTarget: "/data/input",
     description: "Standard month-end accruals: unbilled revenue, unpaid expenses, payroll for partial-period.",
     sortOrder: 40,
   },
@@ -49,6 +54,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 0,
     category: "JOURNAL_ENTRIES",
     title: "Lock prior-period subledgers",
+    screenTarget: "/data/forms",
     description: "Set GL period to LOCKED. No more postings to the closed period without admin override.",
     autoStatusOrigin: "Import",
     sortOrder: 50,
@@ -58,6 +64,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 1,
     category: "CONSOLIDATION",
     title: "Run FX translation + currency consolidation",
+    screenTarget: "/process/consolidation",
     description: "Translate local-currency facts to reporting currency. Use month-end rates for B/S, average for P/L.",
     autoStatusOrigin: "Translation",
     sortOrder: 60,
@@ -66,6 +73,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 1,
     category: "CONSOLIDATION",
     title: "Run intercompany eliminations",
+    screenTarget: "/process/consolidation",
     description: "Match bilateral IC pairs (A→B and B→A). Eliminate at the parent. Flag mismatches > $5k.",
     autoStatusOrigin: "Elimination",
     sortOrder: 70,
@@ -75,6 +83,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 2,
     category: "REVIEW",
     title: "Generate trial balance",
+    screenTarget: "/reports/trial-balance",
     description: "Pull TB at parent + each leaf. Confirm zero out-of-balance after consol.",
     sortOrder: 80,
   },
@@ -82,6 +91,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 2,
     category: "REVIEW",
     title: "Variance analysis (Actual vs Budget vs Prior)",
+    screenTarget: "/reports/income-statement",
     description: "Run variance reports. Flag every line > 10% / > $50k delta for narrative.",
     sortOrder: 90,
   },
@@ -90,6 +100,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 3,
     category: "REVIEW",
     title: "Management review meeting",
+    screenTarget: "/reporting",
     description: "CFO + controllers walk the P&L, B/S, KPI deck. Capture sign-off in notes below.",
     sortOrder: 100,
   },
@@ -98,6 +109,7 @@ export const DEFAULT_CLOSE_PLAYBOOK: DefaultCloseTask[] = [
     dayOffset: 5,
     category: "LOCK",
     title: "Lock the close — distribute board pack",
+    screenTarget: "/reporting",
     description: "Mark CloseRun LOCKED. Distribute final P&L + B/S + CF + variance commentary to board.",
     sortOrder: 110,
   },

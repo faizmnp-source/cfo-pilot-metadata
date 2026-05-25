@@ -1,0 +1,6 @@
+Dev branch for Finance OS expansion work.
+Created: 2026-05-24T20:57:33Z
+Branched from: b550bd34f317f316d0f2d5e8fcc06a21f4a63df6
+Purpose: Smart Ingestion, Mapping Engine, Close Mgmt, Copilot Actions,
+         Forecasting (ARIMA/Prophet), Workforce/Allocations/Storytelling,
+         Executive Intelligence, Trust + Lineage, Pricing/Packaging.

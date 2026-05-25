@@ -1,3 +1,4 @@
+import { CommandPalette } from "@/components/cmd/CommandPalette";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { UnifiedSidebar } from "@/components/layout/UnifiedSidebar";
@@ -24,7 +25,8 @@ export default async function CfoLayout({ children }: { children: React.ReactNod
       {/* Auto-toggles body.atelier-theme on every page, removes on /growth */}
       <AtelierBodyClass />
       <UnifiedSidebar userName={userName} userRole={userRole} />
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">{children}</div>
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">{children}
+      <CommandPalette /></div>
     </div>
   );
 }

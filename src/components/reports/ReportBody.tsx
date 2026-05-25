@@ -34,7 +34,7 @@ const SECTION_THEME: Record<string, { dot: string; rule: string; subtotalBg: str
   DEFAULT:   { dot: "bg-stone-500",    rule: "border-stone-300",       subtotalBg: "bg-stone-50",       label: "text-stone-900" },
 };
 
-export function ReportBody({ sections, ccy = "USD" }: { sections: ReportSection[]; ccy?: string }) {
+export function ReportBody({ sections, ccy = "USD", onDrillLine }: { sections: ReportSection[]; ccy?: string; onDrillLine?: (accountId: string, name: string) => void }) {
   if (!sections.length) {
     return (
       <div className="py-16 text-center text-stone-500" style={{ fontFamily: "'Georgia', 'Garamond', serif" }}>
@@ -73,6 +73,14 @@ export function ReportBody({ sections, ccy = "USD" }: { sections: ReportSection[
                       <span className={`text-[13px] ${line.isBold ? "font-semibold text-stone-900" : "text-stone-700"}`}>
                         {line.name}
                       </span>
+                      {onDrillLine && line.accountId && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDrillLine(line.accountId, line.name); }}
+                          title={`Drill into ${line.name}`}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 inline-flex items-center justify-center w-4 h-4 rounded-full border border-stone-300 text-stone-500 hover:text-stone-900 hover:border-stone-500 text-[9px] leading-none"
+                          style={{ verticalAlign: "middle" }}
+                        >ⓘ</button>
+                      )}
                     </td>
                     <td className={`py-1.5 pr-2 text-right font-mono text-[13px] tabular-nums w-48 ${line.value < 0 ? "text-rose-700" : "text-stone-900"}`}
                         style={{ fontFamily: "'SF Mono', 'Monaco', 'Menlo', monospace" }}>

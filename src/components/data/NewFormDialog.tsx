@@ -7,6 +7,7 @@
 // Scenarios for VARIANCE / SCENARIO_STACK are picked from multi-select.
 
 import { useEffect, useState } from "react";
+import { DslEditor } from "@/components/forms/DslEditor";
 import { X, LayoutGrid, ArrowLeftRight, Layers, Star } from "lucide-react";
 
 type Member = { id: string; code: string; name: string };
@@ -33,7 +34,8 @@ export function NewFormDialog({ onClose, onSaved }: Props) {
   const [isDefault, setIsDefault] = useState(false);
 
   // Row selection
-  const [rowKind, setRowKind] = useState<"all_leaves" | "children_of">("all_leaves");
+  const [rowKind, setRowKind] = useState<"all_leaves" | "children_of" | "dsl">("all_leaves");
+  const [rowDsl, setRowDsl] = useState<string>("");
   const [rowParent, setRowParent] = useState<string>("");
   const [accounts, setAccounts] = useState<Member[]>([]);
 
@@ -76,6 +78,7 @@ export function NewFormDialog({ onClose, onSaved }: Props) {
     if (!name.trim()) { setError("Form name required"); return; }
     if (!code.trim()) { setError("Form code required"); return; }
     if (rowKind === "children_of" && !rowParent) { setError("Pick a parent account"); return; }
+    if (rowKind === "dsl" && !rowDsl.trim()) { setError("Enter a DSL expression for rows"); return; }
     if (layout === "VARIANCE" && pickedScenarios.length !== 2) { setError("Variance needs exactly 2 scenarios"); return; }
     if (layout === "SCENARIO_STACK" && pickedScenarios.length < 2) { setError("Scenario stack needs at least 2 scenarios"); return; }
 
@@ -83,7 +86,9 @@ export function NewFormDialog({ onClose, onSaved }: Props) {
     try {
       const rowSelection = rowKind === "all_leaves"
         ? { kind: "all_leaves" }
-        : { kind: "children_of", parentMemberId: rowParent };
+        : rowKind === "children_of"
+          ? { kind: "children_of", parentMemberId: rowParent }
+          : { kind: "dsl", expression: rowDsl };
 
       const povDefaults: Record<string, string> = {};
       if (defaultEntity)   povDefaults.ENTITY   = defaultEntity;
@@ -184,6 +189,17 @@ export function NewFormDialog({ onClose, onSaved }: Props) {
                   </select>
                 </div>
               </label>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input type="radio" name="rowKind" checked={rowKind === "dsl"} onChange={() => setRowKind("dsl")} className="mt-1" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">DSL expression</div>
+                <div className="text-xs text-stone-600 mb-1.5">Use Children() / Descendants() / Level0() — re-evaluates as hierarchy changes</div>
+                {rowKind === "dsl" && (
+                  <DslEditor dimensionCode="account" value={rowDsl} onChange={setRowDsl} label="" />
+                )}
+              </div>
+            </label>
+
             </div>
           </section>
 
