@@ -24,6 +24,7 @@ const HERO_NAV: Item[] = [
 const INSIGHTS_NAV: Item[] = [
   { href: "/dashboard",     label: "Executive Brief",     icon: LayoutDashboard },
   { href: "/explore",       label: "Explorer",            icon: PieChart },
+  { href: "/analyze",       label: "Analyze (Ad Hoc)",    icon: Layers },
   { href: "/growth",        label: "Growth Engine",       icon: Rocket },
   { href: "/monthly-close", label: "Monthly Close",       icon: CalendarCheck },
 ];
