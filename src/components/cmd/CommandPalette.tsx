@@ -16,6 +16,8 @@ export function CommandPalette() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [active, setActive] = useState(0);
+  const [recents, setRecents] = useState<Result[]>([]);
+  const [favourites, setFavourites] = useState<Result[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<any>(null);
 
@@ -30,8 +32,18 @@ export function CommandPalette() {
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Focus on open
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 30); }, [open]);
+  // Focus on open + load recents/favourites
+  useEffect(() => {
+    if (!open) return;
+    setTimeout(() => inputRef.current?.focus(), 30);
+    Promise.all([
+      fetch("/api/v2/search/recents",    { credentials: "include" }).then(r => r.json()),
+      fetch("/api/v2/search/favourites", { credentials: "include" }).then(r => r.json()),
+    ]).then(([r, f]) => {
+      setRecents((r?.data ?? []).map((x: any) => ({ kind: x.kind ?? "Page", title: x.title, href: x.href, score: 0 })));
+      setFavourites((f?.data ?? []).map((x: any) => ({ kind: x.kind ?? "Page", title: x.title, href: x.href, score: 0 })));
+    }).catch(() => {});
+  }, [open]);
 
   // Debounced search
   useEffect(() => {
@@ -49,7 +61,14 @@ export function CommandPalette() {
   const onListKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setActive(a => Math.min(a + 1, results.length - 1)); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setActive(a => Math.max(0, a - 1)); }
-    if (e.key === "Enter")     { const r = results[active]; if (r) { setOpen(false); router.push(r.href); } }
+    if (e.key === "Enter")     {
+      const list = q.trim() ? results : recents;
+      const r = list[active];
+      if (r) {
+        fetch("/api/v2/search/recents", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ href: r.href, title: r.title, kind: r.kind }) }).catch(() => {});
+        setOpen(false); router.push(r.href);
+      }
+    }
   };
 
   if (!open) return null;
@@ -67,22 +86,65 @@ export function CommandPalette() {
           />
         </div>
         <div className="max-h-96 overflow-y-auto">
-          {!q.trim() && (
+          {!q.trim() && favourites.length === 0 && recents.length === 0 && (
             <p className="atelier-serif italic px-4 py-6" style={{ fontSize: 13, color: "var(--ink-3)" }}>
               Type to search. ↑/↓ to navigate, ↵ to open. Press Cmd/Ctrl-K to toggle.
             </p>
+          )}
+          {!q.trim() && favourites.length > 0 && (
+            <div className="px-4 py-2">
+              <p className="atelier-eyebrow mb-1" style={{ fontSize: 9 }}>Favourites</p>
+              {favourites.map((r, i) => (
+                <button key={`fav-${i}`} onClick={() => { fetch("/api/v2/search/recents", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ href: r.href, title: r.title, kind: r.kind }) }).catch(() => {}); setOpen(false); router.push(r.href); }}
+                  className="w-full text-left py-1.5 flex items-center gap-2">
+                  <span className="atelier-eyebrow" style={{ fontSize: 9.5, width: 56, color: "var(--accent)" }}>★ {r.kind}</span>
+                  <span className="atelier-serif" style={{ fontSize: 13 }}>{r.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!q.trim() && recents.length > 0 && (
+            <div className="px-4 py-2 border-t" style={{ borderColor: "var(--rule)" }}>
+              <p className="atelier-eyebrow mb-1" style={{ fontSize: 9 }}>Recent</p>
+              {recents.slice(0, 6).map((r, i) => (
+                <button key={`rec-${i}`} onClick={() => { setOpen(false); router.push(r.href); }}
+                  className="w-full text-left py-1.5 flex items-center gap-2">
+                  <span className="atelier-eyebrow" style={{ fontSize: 9.5, width: 56 }}>{r.kind}</span>
+                  <span className="atelier-serif" style={{ fontSize: 13 }}>{r.title}</span>
+                </button>
+              ))}
+            </div>
           )}
           {q.trim() && results.length === 0 && (
             <p className="atelier-serif italic px-4 py-6" style={{ fontSize: 13, color: "var(--ink-3)" }}>No results.</p>
           )}
           {results.map((r, i) => (
-            <button key={i} onClick={() => { setOpen(false); router.push(r.href); }}
-              className="w-full text-left px-4 py-2.5 flex items-center gap-3 border-b"
+            <div key={i}
+              className="flex items-center gap-2 px-4 py-2.5 border-b"
               style={{ borderColor: "var(--rule)", background: i === active ? "var(--paper-2, #ede5d2)" : "transparent" }}>
-              <span className="atelier-eyebrow" style={{ fontSize: 9.5, width: 56, color: "var(--ink-3)" }}>{r.kind}</span>
-              <span className="atelier-serif" style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{r.title}</span>
-              {r.subtitle && <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11, color: "var(--ink-3)" }}>{r.subtitle}</span>}
-            </button>
+              <button onClick={() => { fetch("/api/v2/search/recents", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ href: r.href, title: r.title, kind: r.kind }) }).catch(() => {}); setOpen(false); router.push(r.href); }}
+                className="flex-1 flex items-center gap-3 text-left">
+                <span className="atelier-eyebrow" style={{ fontSize: 9.5, width: 56, color: "var(--ink-3)" }}>{r.kind}</span>
+                <span className="atelier-serif" style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{r.title}</span>
+                {r.subtitle && <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11, color: "var(--ink-3)" }}>{r.subtitle}</span>}
+              </button>
+              <button
+                title={favourites.some(f => f.href === r.href) ? "Remove favourite" : "Favourite"}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const isFav = favourites.some(f => f.href === r.href);
+                  if (isFav) {
+                    await fetch(`/api/v2/search/favourites?href=${encodeURIComponent(r.href)}`, { method: "DELETE", credentials: "include" });
+                    setFavourites(favs => favs.filter(f => f.href !== r.href));
+                  } else {
+                    await fetch("/api/v2/search/favourites", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ href: r.href, title: r.title, kind: r.kind })});
+                    setFavourites(favs => [...favs, r]);
+                  }
+                }}
+                style={{ color: favourites.some(f => f.href === r.href) ? "var(--accent)" : "var(--ink-4)", fontSize: 14, padding: "2px 6px" }}>
+                {favourites.some(f => f.href === r.href) ? "★" : "☆"}
+              </button>
+            </div>
           ))}
         </div>
         <div className="px-4 py-2 border-t flex items-center justify-between" style={{ borderColor: "var(--rule)" }}>

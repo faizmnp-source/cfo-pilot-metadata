@@ -170,6 +170,7 @@ model Tenant {
   adhocViews      AdHocView[]
   entityOwnership EntityOwnership[]
   jobDependencies JobDependency[]
+  userPreferences UserPreference[]
 
   @@index([slug])
   @@map("tenants")
@@ -1189,6 +1190,33 @@ model JobDependency {
   @@unique([tenantId, jobId, dependsOnJobId])
   @@index([tenantId, jobId])
   @@map("job_dependencies")
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Section 16.2 — User preferences (Cmd-K favourites + recents)
+// Generic per-user kv store keyed on (userId, kind).  Kind examples:
+//   'cmdk_favourite' { href, title, kind }
+//   'cmdk_recent'    { href, title, kind, openedAt }
+// Kept generic so future UI prefs (theme, density, default-tile-order)
+// can share the table without schema churn.
+// ═══════════════════════════════════════════════════════════════════
+model UserPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String                                     // user.id
+  kind      String                                     // 'cmdk_favourite' | 'cmdk_recent' | 'dashboard_config' | ...
+  key       String                                     // free-form within kind (e.g. href for cmdk entries)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, kind, key])
+  @@index([tenantId, userId, kind, updatedAt(sort: Desc)])
+  @@map("user_preferences")
 }
 
 // ═══════════════════════════════════════════════════════════════════
