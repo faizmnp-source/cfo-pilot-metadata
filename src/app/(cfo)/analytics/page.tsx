@@ -11,6 +11,7 @@ import { WaterfallChart, type WaterfallStep } from "@/components/charts/Waterfal
 import { Heatmap } from "@/components/charts/Heatmap";
 import { TreemapChart } from "@/components/charts/TreemapChart";
 import { ScatterChartXY } from "@/components/charts/ScatterChartXY";
+import { CommentaryPanel } from "@/components/commentary/CommentaryPanel";
 import type { PovSpec } from "@/lib/pov/types";
 
 export default function AnalyticsPage() {
@@ -19,6 +20,7 @@ export default function AnalyticsPage() {
   const [heat, setHeat] = useState<{ rows: string[]; cols: string[]; cells: number[][] }>({ rows: [], cols: [], cells: [] });
   const [tree, setTree] = useState<Array<{ name: string; size: number }>>([]);
   const [scatter, setScatter] = useState<Array<{ x: number; y: number; label: string }>>([]);
+  const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +55,7 @@ export default function AnalyticsPage() {
         if (ids.entityIds.length) qs.set("entityIds", ids.entityIds.join(","));
         const sumResp = await fetch(`/api/v2/dashboard/summary?${qs}`, { credentials: "include" });
         const sum = (await sumResp.json())?.data;
-        if (sum) {
+        if (sum) { setSummary(sum);
           setTree((sum.byEntity ?? []).map((e: any) => ({ name: e.name, size: Math.max(0, Math.abs(e.value)) })));
 
           // 3. Waterfall: revenue → -COGS → -Opex → Net Income (using budget as compare baseline)
@@ -101,11 +103,27 @@ export default function AnalyticsPage() {
       <div className="px-14 py-8 grid gap-8" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <ChartCard title="P&L Waterfall" eyebrow="Revenue → Net Income">
           {loading && <p className="atelier-serif italic" style={{ color: "var(--ink-3)" }}>Loading…</p>}
-          {!loading && waterfall.length > 0 && <WaterfallChart steps={waterfall} />}
+          {!loading && waterfall.length > 0 && (<>
+            <WaterfallChart steps={waterfall} />
+            {summary && (
+              <CommentaryPanel
+                kpi={{ key: "netIncome", label: "Net Income", value: summary.kpis?.netIncome?.value ?? 0, deltaPct: summary.kpis?.netIncome?.deltaPct ?? null, favourable: (summary.kpis?.netIncome?.value ?? 0) >= 0 ? "GOOD" : "BAD" }}
+                context={{ tenantName: "this tenant", byEntity: summary.byEntity, topVariances: summary.topVariances, period: pov.periodCode }}
+              />
+            )}
+          </>)}
         </ChartCard>
 
         <ChartCard title="Revenue Share by Entity" eyebrow="Treemap · top contributors visually">
-          {!loading && tree.length > 0 && <TreemapChart data={tree} />}
+          {!loading && tree.length > 0 && (<>
+            <TreemapChart data={tree} />
+            {summary && (
+              <CommentaryPanel
+                kpi={{ key: "revenue", label: "Revenue", value: summary.kpis?.revenue?.value ?? 0, deltaPct: summary.kpis?.revenue?.deltaPct ?? null, favourable: "GOOD" }}
+                context={{ tenantName: "this tenant", byEntity: summary.byEntity, topVariances: summary.topVariances, period: pov.periodCode }}
+              />
+            )}
+          </>)}
           {!loading && tree.length === 0 && <p className="atelier-serif italic" style={{ color: "var(--ink-3)" }}>No entity revenue in scope.</p>}
         </ChartCard>
 
