@@ -41,6 +41,24 @@ export default function AnalyzePage() {
 
   useEffect(() => { document.body.classList.add("atelier-theme"); return () => { document.body.classList.remove("atelier-theme"); }; }, []);
 
+  // Open a saved view from ?view=<id> on initial load
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get("view");
+    if (!id) return;
+    fetch(`/api/v2/analyze/views/${id}`, { credentials: "include" })
+      .then(r => r.json())
+      .then(j => {
+        const spec = j?.data?.spec;
+        if (!spec) return;
+        if (spec.pov)    setPov(spec.pov);
+        if (spec.rowDim) setRowDim(spec.rowDim);
+        if (spec.colDim) setColDim(spec.colDim);
+        if (spec.agg)    setAgg(spec.agg);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!pov.scenarioCode || !pov.periodCode || !rowDim || !colDim || rowDim === colDim) return;
     setLoading(true); setError(null); setResult(null);
@@ -88,14 +106,20 @@ export default function AnalyzePage() {
 
   return (
     <main className="flex-1 overflow-y-auto" style={{ background: "var(--paper)", color: "var(--ink)" }}>
-      <header className="px-14 pt-7 pb-5 border-b" style={{ borderColor: "var(--ink)" }}>
-        <div className="atelier-eyebrow" style={{ fontSize: 11, color: "var(--accent)" }}>Section 8 · Ad Hoc Analysis</div>
-        <h1 className="atelier-serif" style={{ fontSize: 36, fontWeight: 600, letterSpacing: "-0.02em", marginTop: 4 }}>
-          Analyze
-        </h1>
-        <p className="atelier-serif italic mt-2" style={{ fontSize: 13, color: "var(--ink-3)" }}>
-          Cross any two dimensions. Click a cell to drill into the underlying facts.
-        </p>
+      <header className="px-14 pt-7 pb-5 border-b flex items-end justify-between" style={{ borderColor: "var(--ink)" }}>
+        <div>
+          <div className="atelier-eyebrow" style={{ fontSize: 11, color: "var(--accent)" }}>Section 8 · Ad Hoc Analysis</div>
+          <h1 className="atelier-serif" style={{ fontSize: 36, fontWeight: 600, letterSpacing: "-0.02em", marginTop: 4 }}>
+            Analyze
+          </h1>
+          <p className="atelier-serif italic mt-2" style={{ fontSize: 13, color: "var(--ink-3)" }}>
+            Cross any two dimensions. Click a cell to drill into the underlying facts.
+          </p>
+        </div>
+        <SavedViewsBar
+          currentSpec={{ pov, rowDim, colDim, agg }}
+          onOpen={(spec) => { if (spec.pov) setPov(spec.pov); if (spec.rowDim) setRowDim(spec.rowDim); if (spec.colDim) setColDim(spec.colDim); if (spec.agg) setAgg(spec.agg); }}
+        />
       </header>
 
       <div className="px-14 py-4 border-b" style={{ borderColor: "var(--rule)" }}>
@@ -189,6 +213,87 @@ export default function AnalyzePage() {
         />
       )}
     </main>
+  );
+}
+
+
+
+type SavedView = { id: string; name: string; description: string | null; isShared: boolean; mine: boolean; spec: any; lastOpenedAt: string | null };
+
+function SavedViewsBar({ currentSpec, onOpen }: { currentSpec: any; onOpen: (spec: any) => void }) {
+  const [views, setViews] = useState<SavedView[]>([]);
+  const [open, setOpen]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  const load = async () => {
+    const r = await fetch("/api/v2/analyze/views", { credentials: "include" });
+    const j = await r.json();
+    setViews(j?.data?.data ?? []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    const name = prompt("Name this view:", "My pivot");
+    if (!name) return;
+    setSaving(true);
+    try {
+      const isShared = confirm("Share with everyone in the tenant? OK = shared, Cancel = private to you.");
+      const r = await fetch("/api/v2/analyze/views", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, isShared, spec: currentSpec }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      setSavedFlash(`Saved "${name}"`);
+      setTimeout(() => setSavedFlash(null), 2500);
+      load();
+    } catch (e: any) { alert("Save failed: " + (e?.message ?? e)); }
+    finally { setSaving(false); }
+  };
+
+  const share = async (v: SavedView) => {
+    // Permalink format: /analyze?view=<id>. The page reads ?view on mount.
+    const url = `${window.location.origin}/analyze?view=${v.id}`;
+    try { await navigator.clipboard.writeText(url); alert("Share link copied to clipboard"); }
+    catch { prompt("Copy this share link:", url); }
+  };
+
+  const remove = async (v: SavedView) => {
+    if (!confirm(`Delete view "${v.name}"?`)) return;
+    await fetch(`/api/v2/analyze/views/${v.id}`, { method: "DELETE", credentials: "include" });
+    load();
+  };
+
+  return (
+    <div className="flex items-center gap-2 relative">
+      {savedFlash && <span className="atelier-serif italic" style={{ fontSize: 12, color: "var(--ink-3)" }}>{savedFlash}</span>}
+      <div className="relative">
+        <button onClick={() => setOpen(o => !o)} className="atelier-pill">
+          Open ▾
+        </button>
+        {open && (
+          <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto z-30"
+            style={{ background: "var(--paper)", border: "1px solid var(--ink)", boxShadow: "0 6px 18px -8px rgba(26,22,18,0.2)" }}>
+            {views.length === 0 && <p className="atelier-serif italic p-3" style={{ fontSize: 12, color: "var(--ink-3)" }}>No saved views yet.</p>}
+            {views.map(v => (
+              <div key={v.id} className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: "var(--rule)" }}>
+                <button onClick={() => { onOpen(v.spec); setOpen(false); }} className="flex-1 text-left">
+                  <div className="atelier-serif" style={{ fontSize: 13, fontWeight: 600 }}>
+                    {v.name} {!v.mine && <span className="atelier-eyebrow ml-1" style={{ color: "var(--accent)", fontSize: 9 }}>shared</span>}
+                  </div>
+                  {v.lastOpenedAt && <div className="atelier-eyebrow" style={{ fontSize: 9, color: "var(--ink-3)" }}>{new Date(v.lastOpenedAt).toLocaleDateString()}</div>}
+                </button>
+                <button onClick={() => share(v)} title="Copy share link" className="atelier-eyebrow" style={{ fontSize: 9 }}>🔗</button>
+                {v.mine && <button onClick={() => remove(v)} title="Delete" className="atelier-eyebrow" style={{ fontSize: 9, color: "var(--accent)" }}>✕</button>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <button onClick={save} disabled={saving} className="atelier-pill atelier-pill-dark">{saving ? "Saving…" : "+ Save"}</button>
+    </div>
   );
 }
 

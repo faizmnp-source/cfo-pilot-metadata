@@ -167,6 +167,7 @@ model Tenant {
   mappingRules    MappingRule[]
   mappingLearning MappingLearning[]
   copilotActions  CopilotAction[]
+  adhocViews      AdHocView[]
 
   @@index([slug])
   @@map("tenants")
@@ -1108,6 +1109,33 @@ model CopilotAction {
   @@index([tenantId, status, createdAt(sort: Desc)])
   @@index([tenantId, conversationId])
   @@map("copilot_actions")
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Section 8 — Ad Hoc Analysis: saved views
+// Stores a serialized pivot definition (POV + axes + agg) so users
+// can reopen a "Salaries by Hospital × Month" view next morning.
+// ═══════════════════════════════════════════════════════════════════
+model AdHocView {
+  id          String   @id @default(uuid())
+  tenantId    String
+  ownerId     String                                 // user.id
+  name        String                                 // e.g. "Salaries by Hospital × Month"
+  description String?
+  isShared    Boolean  @default(false)               // false = private to owner; true = tenant-wide
+  // The view spec — kept as JSON so the schema doesn't have to migrate
+  // every time we add an option to the picker.
+  spec        Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastOpenedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, ownerId, lastOpenedAt(sort: Desc)])
+  @@index([tenantId, isShared])
+  @@map("adhoc_views")
 }
 
 // ═══════════════════════════════════════════════════════════════════
