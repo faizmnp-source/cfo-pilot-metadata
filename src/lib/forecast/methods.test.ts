@@ -246,3 +246,447 @@ describe("ensemble", () => {
     }
   });
 });
+
+
+/* ─── Phase 4.3 — holtWinters comprehensive coverage ───────────────────
+ * The Phase 4.1 ship landed holtWinters + ensemble with 6 tests covering
+ * the happy path. These tests pin every load-bearing edge: fallback
+ * boundaries, default params, method tag, shape contract, and numerical
+ * properties. Drift in any of these silently re-routes forecasts a CFO
+ * shipping board-pack commentary will trust.
+ */
+describe("holtWinters — fallback boundaries", () => {
+  // Boundary check: holtWinters requires history.length >= 2 * seasonLength.
+  // Below that, it ALWAYS routes through linearTrend (which itself falls
+  // back to runRate when n < 2).
+  it("falls back when history is empty (length 0 < 24)", () => {
+    const r = holtWinters([], 3, 12);
+    // empty history → linearTrend(n<2) → runRate(empty) → zeros
+    expect(r.values).toEqual([0, 0, 0]);
+    expect(r.params.fallbackFrom).toBe("HOLT_WINTERS");
+  });
+
+  it("falls back when history has only 1 point", () => {
+    const r = holtWinters([42], 2, 12);
+    // linearTrend with n=1 falls through to runRate → returns avg of [42]
+    expect(r.values).toEqual([42, 42]);
+    expect(r.params.fallbackFrom).toBe("HOLT_WINTERS");
+  });
+
+  it("falls back at 1 less than 2*seasonLength (history=23, seasonLength=12)", () => {
+    const h = Array(23).fill(0).map((_, i) => 100 + i);
+    const r = holtWinters(h, 3, 12);
+    expect(r.params.fallbackFrom).toBe("HOLT_WINTERS");
+  });
+
+  it("does NOT fall back at exactly 2*seasonLength (history=24, seasonLength=12)", () => {
+    // 24 points is the minimum for HW to fire its own math.
+    const h = Array(24).fill(0).map((_, i) => 100 + i);
+    const r = holtWinters(h, 3, 12);
+    expect(r.method).toBe("HOLT_WINTERS");
+    expect((r.params as any).fallbackFrom).toBeUndefined();
+  });
+
+  it("fallback metadata includes reason 'history < 2 seasons'", () => {
+    const r = holtWinters([1, 2, 3, 4, 5], 2, 12);
+    expect(r.params.fallbackFrom).toBe("HOLT_WINTERS");
+    expect(r.params.reason).toBe("history < 2 seasons");
+  });
+
+  it("fallback preserves original linearTrend / runRate method tag", () => {
+    // n=5 → linearTrend (>= 2 points) → method tag stays LINEAR_TREND
+    const r1 = holtWinters([1, 2, 3, 4, 5], 1, 12);
+    expect(r1.method).toBe("LINEAR_TREND");
+    // n=1 → linearTrend falls back to runRate → method tag becomes RUN_RATE
+    const r2 = holtWinters([42], 1, 12);
+    expect(r2.method).toBe("RUN_RATE");
+  });
+
+  it("custom seasonLength=4 fallback boundary fires at history.length < 8", () => {
+    const r1 = holtWinters([1, 2, 3, 4, 5, 6, 7], 2, 4);          // 7 < 8 → fallback
+    expect(r1.params.fallbackFrom).toBe("HOLT_WINTERS");
+    const r2 = holtWinters([1, 2, 3, 4, 5, 6, 7, 8], 2, 4);       // 8 >= 8 → no fallback
+    expect(r2.method).toBe("HOLT_WINTERS");
+  });
+});
+
+describe("holtWinters — params and shape contract", () => {
+  // The HW result.params dictionary is consumed by /api/v2/forecast/v2
+  // and surfaced to the UI for explainability. Any drift in these keys
+  // breaks the UI without a runtime error.
+  const longH = Array(36).fill(0).map((_, i) => 100 + i + 10 * Math.sin(i / 2));
+
+  it("populates alpha / beta / gamma in params", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r.params.alpha).toBe(0.4);
+    expect(r.params.beta).toBe(0.1);
+    expect(r.params.gamma).toBe(0.3);
+  });
+
+  it("populates seasonLength / finalLevel / finalTrend in params", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r.params.seasonLength).toBe(12);
+    expect(typeof r.params.finalLevel).toBe("number");
+    expect(typeof r.params.finalTrend).toBe("number");
+    expect(Number.isFinite(r.params.finalLevel)).toBe(true);
+    expect(Number.isFinite(r.params.finalTrend)).toBe(true);
+  });
+
+  it("default alpha = 0.4, beta = 0.1, gamma = 0.3, seasonLength = 12", () => {
+    // Default-arg signature locked.
+    const r = holtWinters(longH, 3);  // no params after futurePeriods
+    expect(r.params.alpha).toBe(0.4);
+    expect(r.params.beta).toBe(0.1);
+    expect(r.params.gamma).toBe(0.3);
+    expect(r.params.seasonLength).toBe(12);
+  });
+
+  it("override alpha/beta/gamma reflected back in params", () => {
+    const r = holtWinters(longH, 3, 12, 0.7, 0.2, 0.5);
+    expect(r.params.alpha).toBe(0.7);
+    expect(r.params.beta).toBe(0.2);
+    expect(r.params.gamma).toBe(0.5);
+  });
+
+  it("method tag is 'HOLT_WINTERS' on the no-fallback path", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r.method).toBe("HOLT_WINTERS");
+  });
+
+  it("returns { method, params, values, basis } shape", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r).toEqual(expect.objectContaining({
+      method: expect.any(String),
+      params: expect.any(Object),
+      values: expect.any(Array),
+      basis:  expect.any(Object),
+    }));
+  });
+
+  it("basis.historyCount equals history.length on no-fallback path", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r.basis.historyCount).toBe(longH.length);
+  });
+
+  it("basis.historyMean equals true mean on no-fallback path", () => {
+    const r = holtWinters(longH, 3, 12);
+    const expectedMean = longH.reduce((a, b) => a + b, 0) / longH.length;
+    expect(r.basis.historyMean).toBeCloseTo(expectedMean, 5);
+  });
+
+  it("basis.historyLast equals last element on no-fallback path", () => {
+    const r = holtWinters(longH, 3, 12);
+    expect(r.basis.historyLast).toBe(longH[longH.length - 1]);
+  });
+});
+
+describe("holtWinters — values length contract", () => {
+  // Caller relies on values.length === futurePeriods for table rendering.
+  const longH = Array(36).fill(0).map((_, i) => 100 + i);
+
+  it("requests of 1 future period return 1 value", () => {
+    const r = holtWinters(longH, 1, 12);
+    expect(r.values).toHaveLength(1);
+  });
+
+  it("requests of 12 future periods return 12 values", () => {
+    const r = holtWinters(longH, 12, 12);
+    expect(r.values).toHaveLength(12);
+  });
+
+  it("requests of 24 future periods return 24 values", () => {
+    const r = holtWinters(longH, 24, 12);
+    expect(r.values).toHaveLength(24);
+  });
+
+  it("requests of 0 future periods return empty values array", () => {
+    const r = holtWinters(longH, 0, 12);
+    expect(r.values).toHaveLength(0);
+  });
+
+  it("every value is a finite number on no-fallback path with positive history", () => {
+    const r = holtWinters(longH, 12, 12);
+    for (const v of r.values) {
+      expect(Number.isFinite(v)).toBe(true);
+    }
+  });
+});
+
+describe("holtWinters — numerical behavior", () => {
+  it("constant history → near-constant forecast", () => {
+    // Flat 100s for 2 full seasons. With trend ≈ 0 and seasonals ≈ 1,
+    // forecast should also be ≈ 100.
+    const h = Array(24).fill(100);
+    const r = holtWinters(h, 6, 12);
+    for (const v of r.values) {
+      expect(v).toBeCloseTo(100, 0);
+    }
+  });
+
+  it("clean linear trend → forecast continues to rise", () => {
+    // Pure y = 100 + 2*i for 24 months. HW should pick up the trend
+    // (initial trend = avg of season-2-vs-season-1 deltas).
+    const h = Array(24).fill(0).map((_, i) => 100 + 2 * i);
+    const r = holtWinters(h, 6, 12);
+    // forecast values should be monotonically increasing
+    for (let i = 1; i < r.values.length; i++) {
+      expect(r.values[i]).toBeGreaterThan(r.values[i - 1]);
+    }
+  });
+
+  it("clean linear downtrend → forecast continues to fall", () => {
+    const h = Array(24).fill(0).map((_, i) => 200 - 2 * i);
+    const r = holtWinters(h, 6, 12);
+    for (let i = 1; i < r.values.length; i++) {
+      expect(r.values[i]).toBeLessThan(r.values[i - 1]);
+    }
+  });
+
+  it("finalLevel is positive on positive constant history", () => {
+    const h = Array(24).fill(100);
+    const r = holtWinters(h, 3, 12);
+    expect(r.params.finalLevel).toBeGreaterThan(0);
+  });
+
+  it("finalTrend ≈ 0 on flat history", () => {
+    const h = Array(24).fill(50);
+    const r = holtWinters(h, 3, 12);
+    expect(Math.abs(r.params.finalTrend)).toBeLessThan(1e-9);
+  });
+
+  it("doesn't mutate the caller's history array", () => {
+    const h = Array(24).fill(0).map((_, i) => 100 + i);
+    const snapshot = [...h];
+    holtWinters(h, 6, 12);
+    expect(h).toEqual(snapshot);
+  });
+
+  it("is deterministic — same input twice yields same output", () => {
+    const h = Array(24).fill(0).map((_, i) => 100 + 2 * i + 5 * Math.sin(i / 3));
+    const r1 = holtWinters(h, 6, 12);
+    const r2 = holtWinters(h, 6, 12);
+    expect(r1.values).toEqual(r2.values);
+    expect(r1.params.finalLevel).toBe(r2.params.finalLevel);
+    expect(r1.params.finalTrend).toBe(r2.params.finalTrend);
+  });
+});
+
+
+/* ─── Phase 4.3 — ensemble comprehensive coverage ──────────────────────
+ * The ensemble selector backtests 4 methods on a holdout, picks the
+ * lowest-MAPE winner, then refits on full history. The structural
+ * contract (chosen, backtests, holdoutN, reason) is consumed by the UI
+ * + audit log. Pin it.
+ */
+describe("ensemble — fallback boundaries", () => {
+  // Fallback fires when history.length <= holdoutN + 3.
+  it("falls back at history.length = 0", () => {
+    const r = ensemble([], 3, 3);
+    expect(r.ensemble.chosen).toBe("RUN_RATE");
+    expect(r.ensemble.backtests).toEqual([]);
+  });
+
+  it("falls back at history.length = 1", () => {
+    const r = ensemble([42], 3, 3);
+    expect(r.ensemble.chosen).toBe("RUN_RATE");
+    expect(r.ensemble.backtests).toEqual([]);
+  });
+
+  it("falls back at exact boundary history.length = holdoutN + 3", () => {
+    // n=6, holdoutN=3 → 6 <= 6 → fallback
+    const h = [10, 20, 30, 40, 50, 60];
+    const r = ensemble(h, 2, 3);
+    expect(r.ensemble.chosen).toBe("RUN_RATE");
+    expect(r.ensemble.backtests).toEqual([]);
+  });
+
+  it("does NOT fall back at history.length = holdoutN + 4", () => {
+    // n=7, holdoutN=3 → 7 > 6 → backtest runs
+    const h = [10, 20, 30, 40, 50, 60, 70];
+    const r = ensemble(h, 2, 3);
+    expect(r.ensemble.backtests.length).toBeGreaterThan(0);
+  });
+
+  it("fallback reason mentions 'Not enough history'", () => {
+    const r = ensemble([1, 2, 3], 3, 3);
+    expect(r.ensemble.reason).toMatch(/Not enough history/);
+  });
+
+  it("fallback preserves holdoutN parameter in the returned envelope", () => {
+    const r = ensemble([1, 2, 3], 3, 7);
+    expect(r.ensemble.holdoutN).toBe(7);
+  });
+
+  it("fallback inherits runRate values (last basisN avg)", () => {
+    // RunRate fallback: avg of last 3 of [10, 20, 30] = 20.
+    const r = ensemble([10, 20, 30], 3, 3);
+    expect(r.values).toEqual([20, 20, 20]);
+  });
+});
+
+describe("ensemble — backtest shape", () => {
+  // Sufficient history for HW to fire its own math without falling
+  // back. 30 monthly points = 2.5 full seasons.
+  const longH = Array(30).fill(0).map((_, i) => 100 + 2 * i + 10 * Math.sin(i / 2));
+
+  it("returns 4 backtest entries when history is sufficient", () => {
+    // 4 methods are tried in ALL_METHODS: RUN_RATE, LINEAR_TREND,
+    // SEASONAL_TREND, HOLT_WINTERS.
+    const r = ensemble(longH, 6, 3);
+    expect(r.ensemble.backtests).toHaveLength(4);
+  });
+
+  it("every backtest entry has method / mape / rmse fields", () => {
+    const r = ensemble(longH, 6, 3);
+    for (const b of r.ensemble.backtests) {
+      expect(typeof b.method).toBe("string");
+      expect(typeof b.mape).toBe("number");
+      expect(typeof b.rmse).toBe("number");
+    }
+  });
+
+  it("all backtest mape values are ≥ 0 (or Infinity for div-by-zero rows)", () => {
+    const r = ensemble(longH, 6, 3);
+    for (const b of r.ensemble.backtests) {
+      expect(b.mape).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("all backtest rmse values are ≥ 0 (or Infinity)", () => {
+    const r = ensemble(longH, 6, 3);
+    for (const b of r.ensemble.backtests) {
+      expect(b.rmse).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("chosen is a non-empty string referring to one of the methods", () => {
+    const r = ensemble(longH, 6, 3);
+    expect(typeof r.ensemble.chosen).toBe("string");
+    expect(r.ensemble.chosen.length).toBeGreaterThan(0);
+    expect(["RUN_RATE", "LINEAR_TREND", "SEASONAL_TREND", "HOLT_WINTERS"])
+      .toContain(r.ensemble.chosen);
+  });
+
+  it("reason references the chosen method name", () => {
+    const r = ensemble(longH, 6, 3);
+    expect(r.ensemble.reason).toContain(r.ensemble.chosen);
+  });
+
+  it("holdoutN in result equals holdoutN passed in", () => {
+    const r = ensemble(longH, 6, 5);
+    expect(r.ensemble.holdoutN).toBe(5);
+  });
+});
+
+describe("ensemble — defaults and contract", () => {
+  const longH = Array(30).fill(0).map((_, i) => 100 + 2 * i);
+
+  it("default holdoutN = 3 when not provided", () => {
+    const r = ensemble(longH, 6);  // no holdoutN arg
+    expect(r.ensemble.holdoutN).toBe(3);
+  });
+
+  it("returns full ForecastResult shape merged with ensemble metadata", () => {
+    const r = ensemble(longH, 6, 3);
+    expect(r).toEqual(expect.objectContaining({
+      method: expect.any(String),
+      params: expect.any(Object),
+      values: expect.any(Array),
+      basis:  expect.any(Object),
+      ensemble: expect.any(Object),
+    }));
+  });
+
+  it("values.length equals futurePeriods on the non-fallback path", () => {
+    const r = ensemble(longH, 9, 3);
+    expect(r.values).toHaveLength(9);
+  });
+
+  it("values.length equals futurePeriods on the fallback path too", () => {
+    const r = ensemble([1, 2, 3], 5, 3);  // fallback
+    expect(r.values).toHaveLength(5);
+  });
+
+  it("basis.historyCount matches input history length on no-fallback path", () => {
+    const r = ensemble(longH, 6, 3);
+    expect(r.basis.historyCount).toBeGreaterThan(0);
+    // refit happens on full history for the winner → basis reflects full history
+    expect(r.basis.historyCount).toBe(longH.length);
+  });
+});
+
+describe("ensemble — method selection on well-known data", () => {
+  it("constant series → very low MAPE for RUN_RATE", () => {
+    // Flat 100s. RUN_RATE should backtest perfectly (forecast 100, actual 100).
+    const h = Array(20).fill(100);
+    const r = ensemble(h, 3, 3);
+    const runRateBacktest = r.ensemble.backtests.find(b => b.method === "RUN_RATE");
+    expect(runRateBacktest).toBeDefined();
+    expect(runRateBacktest!.mape).toBeLessThan(1e-9);
+  });
+
+  it("clean linear trend → low MAPE for LINEAR_TREND", () => {
+    const h = Array(20).fill(0).map((_, i) => 100 + 5 * i);
+    const r = ensemble(h, 3, 3);
+    const lin = r.ensemble.backtests.find(b => b.method === "LINEAR_TREND");
+    expect(lin).toBeDefined();
+    expect(lin!.mape).toBeLessThan(5);  // very tight on clean linear data
+  });
+
+  it("clean linear trend → chosen is LINEAR_TREND or HOLT_WINTERS", () => {
+    const h = Array(20).fill(0).map((_, i) => 100 + 5 * i);
+    const r = ensemble(h, 3, 3);
+    expect(["LINEAR_TREND", "HOLT_WINTERS"]).toContain(r.ensemble.chosen);
+  });
+});
+
+describe("ensemble — robustness", () => {
+  it("doesn't throw when history contains zeros mid-series", () => {
+    // Zeros in 'actual' make MAPE skip those rows. Must not throw.
+    const h = [10, 20, 0, 30, 40, 0, 50, 60, 70, 0, 80, 90];
+    expect(() => ensemble(h, 3, 3)).not.toThrow();
+  });
+
+  it("doesn't throw on history with all zeros", () => {
+    const h = Array(20).fill(0);
+    expect(() => ensemble(h, 3, 3)).not.toThrow();
+  });
+
+  it("is deterministic — same input twice yields same chosen + values", () => {
+    const h = Array(20).fill(0).map((_, i) => 100 + 3 * i + 2 * Math.cos(i / 2));
+    const r1 = ensemble(h, 6, 3);
+    const r2 = ensemble(h, 6, 3);
+    expect(r1.ensemble.chosen).toBe(r2.ensemble.chosen);
+    expect(r1.values).toEqual(r2.values);
+  });
+
+  it("doesn't mutate the caller's history array", () => {
+    const h = Array(20).fill(0).map((_, i) => 100 + i);
+    const snapshot = [...h];
+    ensemble(h, 6, 3);
+    expect(h).toEqual(snapshot);
+  });
+
+  it("doesn't mutate the backtests array across calls (no shared state leak)", () => {
+    const h1 = Array(20).fill(0).map((_, i) => 100 + i);
+    const h2 = Array(20).fill(0).map((_, i) => 50 - i);
+    const r1 = ensemble(h1, 3, 3);
+    const r2 = ensemble(h2, 3, 3);
+    // backtests arrays are distinct objects per call
+    expect(r1.ensemble.backtests).not.toBe(r2.ensemble.backtests);
+  });
+
+  it("handles asymmetric futurePeriods vs holdoutN (forecast longer than holdout)", () => {
+    // train, backtest h=3, then refit and forecast 12 future periods.
+    const h = Array(20).fill(0).map((_, i) => 100 + 2 * i);
+    const r = ensemble(h, 12, 3);
+    expect(r.values).toHaveLength(12);
+  });
+
+  it("handles holdoutN larger than typical (e.g. 10)", () => {
+    const h = Array(30).fill(0).map((_, i) => 100 + i);
+    const r = ensemble(h, 3, 10);
+    expect(r.ensemble.holdoutN).toBe(10);
+    expect(r.ensemble.backtests.length).toBeGreaterThan(0);
+  });
+});
