@@ -26,7 +26,10 @@ function ctx(): AxisResolveCtx {
 describe("resolveAxisSelection", () => {
   it("all_leaves returns leaves only", () => {
     const r = resolveAxisSelection({ kind: "all_leaves" }, ctx()).sort();
-    expect(r).toEqual(["del1","mum","uk"]);
+    // Leaves = members never appearing as a parent in `edges`.
+    // In the fixture, edges' parentMemberIds are {grp, in, del}, so the
+    // leaves are everything else: {us, uk, mum, del1}. Sorted asc.
+    expect(r).toEqual(["del1","mum","uk","us"]);
   });
   it("manual keeps only ids that exist", () => {
     const r = resolveAxisSelection({ kind: "manual", memberIds: ["in","us","does_not_exist"] }, ctx()).sort();
