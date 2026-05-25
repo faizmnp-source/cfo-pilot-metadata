@@ -37,9 +37,15 @@ export function skillsToToolDefs() {
   }));
 }
 
-/** Returns the skill if name matches a registered finance skill */
+/** Returns the skill if name matches a registered finance skill.
+ *  Uses `hasOwn` so inherited keys like `toString` / `constructor` don't
+ *  accidentally resolve to `Object.prototype.toString` etc. — important
+ *  because the `name` here comes from Anthropic tool_use responses.
+ */
 export function findSkill(name: string): FinanceSkill | null {
-  return FINANCE_SKILLS[name] ?? null;
+  return Object.prototype.hasOwnProperty.call(FINANCE_SKILLS, name)
+    ? FINANCE_SKILLS[name]
+    : null;
 }
 
 export type { FinanceSkill, FinanceSkillResult, FinanceSkillContext } from "./types";
